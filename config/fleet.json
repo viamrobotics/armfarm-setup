@@ -1,0 +1,31 @@
+{
+  "org":      { "name": "hackathons", "id": "6d6c7293-bc67-43e4-9c8b-31c76aac27d3" },
+  "location": { "name": "Fine Motor Skills", "id": "310sld03v2" },
+
+  "fragments": {
+    "xarm6":     { "id": "859f2598-60f1-43a2-8df2-13ffbee949cc", "name": "xarm-realsense-gripper2" },
+    "xarm850":   { "id": null, "name": "TODO - needs its own fragment + its own hand-eye calibration" },
+    "obstacles": { "id": "01ca42e4-78b9-425c-ae75-1101b9a7f3e8", "name": "armfarm-workcell-obstacles" }
+  },
+
+  "arm": {
+    "controller_ip": "192.168.1.212",
+    "host_ip_cidr":  "192.168.1.150/24",
+    "subnet":        "192.168.1.0/24"
+  },
+
+  "workcell_defaults": {
+    "_comment": "Box CENTERS, not faces. Face = center -/+ half the box size; see docs/geometry.md",
+    "table-translation":      { "x": 0,   "y": 0, "z": -123 },
+    "front-wall-translation": { "x": 740, "y": 0, "z": 300 },
+    "ceiling-translation":    { "x": 0,   "y": 0, "z": 1050 },
+    "side-wall-left":         { "x": 0,   "y": 500,  "z": 300 },
+    "side-wall-right":        { "x": 0,   "y": -500, "z": 300 }
+  },
+
+  "robot_fragment_vars": {
+    "arm-name": "arm",
+    "base-axis-rotation-degrees": 0,
+    "translation": { "x": 0, "y": 0, "z": 0 }
+  }
+}

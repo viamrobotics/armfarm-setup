@@ -1,0 +1,5 @@
+viam.json.*
+orgkey.txt
+*.key
+venv/
+__pycache__/
