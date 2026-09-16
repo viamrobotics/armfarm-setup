@@ -19,8 +19,7 @@ FLEET = json.loads((ROOT / "config" / "fleet.json").read_text())
 
 
 def build_part_config(args):
-    f = FLEET["fragments"]
-    robot = f[args.arm]
+    robot = FLEET["arm_configs"][args.arm]
     if not robot["id"]:
         sys.exit(f"no fragment id for {args.arm}: {robot['name']}")
     wd = FLEET["workcell_defaults"]
@@ -36,7 +35,7 @@ def build_part_config(args):
                 },
             },
             {
-                "id": f["obstacles"]["id"],
+                "id": FLEET["obstacles_fragment"]["id"],
                 "variables": {
                     "table-translation": wd["table-translation"],
                     "front-wall-translation": wd["front-wall-translation"],
@@ -54,7 +53,9 @@ async def main():
     p.add_argument("--cam-serial", required=True,
                    help="DEVICE serial (not the ASIC serial sysfs reports)")
     p.add_argument("--wall", required=True, choices=["left", "right"])
-    p.add_argument("--arm", default="xarm6", choices=["xarm6", "xarm850"])
+    p.add_argument("--arm", default="xarm6-gripper2",
+                   choices=["xarm6-original", "xarm6-gripper2",
+                            "xarm850-original", "xarm850-gripper2"])
     p.add_argument("--apply", action="store_true")
     p.add_argument("--write-config", action="store_true",
                    help="also write /etc/viam.json (run under sudo)")
@@ -63,7 +64,8 @@ async def main():
     cfg = build_part_config(args)
     print(f"=== {args.name} ===")
     print(f"  org/location : {FLEET['org']['name']} / {FLEET['location']['name']}")
-    print(f"  arm model    : {args.arm} -> {FLEET['fragments'][args.arm]['name']}")
+    print(f"  arm config   : {args.arm} -> {FLEET['arm_configs'][args.arm]['name']}")
+    print(f"  note         : {FLEET['arm_configs'][args.arm]['note']}")
     print(f"  cam serial   : {args.cam_serial}")
     print(f"  wall side    : {args.wall} -> {cfg['fragments'][1]['variables']['side-wall-translation']}")
     if not args.apply:

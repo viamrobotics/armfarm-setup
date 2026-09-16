@@ -20,12 +20,43 @@ bash scripts/inspect.sh
 Gives you: compute model, both NICs with their roles, whether the arm is reachable, the
 RealSense, ssh state, viam-agent state. **Read the output before doing anything.**
 
-Decide from it:
-- **arm model** — xArm6 or xArm850? The 850 needs its own fragment and its own hand-eye
-  calibration; do not reuse the xArm6 camera offsets.
-- **compute** — Meerkat or UDM 90? Should not matter: NIC selection is by capability. If
-  `inspect.sh` couldn't classify a NIC, stop and work out why rather than hardcoding a name.
-- **which side the wall is on** — ask the user; it isn't discoverable from the machine.
+## 1b. Work out which of the FOUR configurations this machine is
+
+**Do this with the person at the machine.** Two of the three answers are physical facts
+you cannot read off the box; your job is to do the math and tell them precisely what to
+look at, not to guess.
+
+The farm is `{xArm6, xArm850} x {original, gripper2}` mounting. `config/fleet.json`
+has all four under `arm_configs`.
+
+**Arm model** — ask. The xArm850 has visibly longer reach and the controller is labelled.
+Getting this wrong means wrong kinematics, so confirm rather than infer.
+
+**Mounting** — this is decided by **where the camera physically is**, and there is a
+decisive test. Once a config is applied and the arm is up, get its pose and run:
+
+```
+# GetEndPosition on the arm, then:
+./scripts/identify-config.py --pose <x> <y> <z> <ox> <oy> <oz> <theta>
+```
+
+It prints where the camera would sit under each mounting - about **168mm apart**, mostly
+horizontal when the tool points down - and the exact question to ask:
+
+> Looking at the wrist, is the camera nearer the arm's base, or further from it?
+
+That answer settles it in seconds.
+
+**Never diagnose this by looking at orientation.** A wrong mounting looks like a
+calibration error, and tuning the numbers to fix it produces something that is wrong in a
+new way. Position is unambiguous; orientation by eye is not. This exact trap cost an hour
+once already.
+
+**Chicken and egg:** you need a config applied before you can query the arm's pose. Apply
+your best guess, run the test, and switch the fragment if wrong - swapping is one delete
+plus one add, and nothing else in the machine config changes.
+
+**Wall side** — ask; not discoverable from the machine.
 
 ## 2. Hostname, mDNS, ssh
 

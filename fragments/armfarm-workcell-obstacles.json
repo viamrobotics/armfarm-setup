@@ -1,0 +1,171 @@
+{
+  "components": [
+    {
+      "api": "rdk:component:gripper",
+      "model": "erh:vmodutils:obstacle",
+      "name": "table",
+      "attributes": {
+        "geometries": [
+          {
+            "type": "box",
+            "x": 3000,
+            "y": 3000,
+            "z": 200,
+            "label": "table"
+          }
+        ]
+      },
+      "frame": {
+        "parent": "world",
+        "translation": {
+          "$variable": {
+            "default_value": {
+              "x": 0,
+              "y": 0,
+              "z": -123
+            },
+            "name": "table-translation"
+          }
+        },
+        "orientation": {
+          "type": "ov_degrees",
+          "value": {
+            "th": 0,
+            "x": 0,
+            "y": 0,
+            "z": 1
+          }
+        }
+      },
+      "ui_folder": {
+        "name": "obstacles"
+      }
+    },
+    {
+      "api": "rdk:component:gripper",
+      "model": "erh:vmodutils:obstacle",
+      "name": "wall-front",
+      "attributes": {
+        "geometries": [
+          {
+            "type": "box",
+            "x": 100,
+            "y": 3000,
+            "z": 1600,
+            "label": "wall-front"
+          }
+        ]
+      },
+      "frame": {
+        "parent": "world",
+        "translation": {
+          "$variable": {
+            "default_value": {
+              "x": 740,
+              "y": 0,
+              "z": 300
+            },
+            "name": "front-wall-translation"
+          }
+        },
+        "orientation": {
+          "type": "ov_degrees",
+          "value": {
+            "th": 0,
+            "x": 0,
+            "y": 0,
+            "z": 1
+          }
+        }
+      },
+      "ui_folder": {
+        "name": "obstacles"
+      }
+    },
+    {
+      "api": "rdk:component:gripper",
+      "model": "erh:vmodutils:obstacle",
+      "name": "wall-side",
+      "attributes": {
+        "geometries": [
+          {
+            "type": "box",
+            "x": 3000,
+            "y": 100,
+            "z": 1600,
+            "label": "wall-side"
+          }
+        ]
+      },
+      "frame": {
+        "parent": "world",
+        "translation": {
+          "$variable": {
+            "name": "side-wall-translation"
+          }
+        },
+        "orientation": {
+          "type": "ov_degrees",
+          "value": {
+            "th": 0,
+            "x": 0,
+            "y": 0,
+            "z": 1
+          }
+        }
+      },
+      "ui_folder": {
+        "name": "obstacles"
+      }
+    },
+    {
+      "api": "rdk:component:gripper",
+      "model": "erh:vmodutils:obstacle",
+      "name": "ceiling",
+      "attributes": {
+        "geometries": [
+          {
+            "type": "box",
+            "x": 3000,
+            "y": 3000,
+            "z": 100,
+            "label": "ceiling"
+          }
+        ]
+      },
+      "frame": {
+        "parent": "world",
+        "translation": {
+          "$variable": {
+            "default_value": {
+              "x": 0,
+              "y": 0,
+              "z": 1050
+            },
+            "name": "ceiling-translation"
+          }
+        },
+        "orientation": {
+          "type": "ov_degrees",
+          "value": {
+            "th": 0,
+            "x": 0,
+            "y": 0,
+            "z": 1
+          }
+        }
+      },
+      "ui_folder": {
+        "name": "obstacles"
+      }
+    }
+  ],
+  "modules": [
+    {
+      "module_id": "erh:vmodutils",
+      "name": "erh_vmodutils",
+      "type": "registry",
+      "version": "latest"
+    }
+  ]
+}

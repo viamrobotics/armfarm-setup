@@ -15,6 +15,9 @@ Constants (org/location/fragment ids, arm IP, workcell geometry) live in
 | `scripts/setup-network.sh` | arm link + office LAN, NICs chosen by capability |
 | `scripts/provision-viam.py` | create machine, mint key, write /etc/viam.json, apply fragments |
 | `scripts/update-fragments.py` | push local JSON into a Viam fragment (app API) |
+| `scripts/identify-config.py` | which of the four configs is this? (collaborative) |
+| `scripts/check-fragments.py` | assert the four arm fragments agree where they must |
+| `fragments/*.json` | version-controlled source of truth for each fragment |
 | `config/fleet.json` | ids and defaults |
 
 ## Conventions
@@ -31,6 +34,15 @@ ceiling `z=1000`.
 camera serial, table height, which side the wall is on) is a fragment **variable** — one
 fragment for the fleet. Anything that differs in *structure* (`viam:ufactory:xArm6` vs
 `xArm850`) needs a **separate fragment**, because a variable cannot parameterize `model`.
+
+**Four arm configurations:** `{xArm6, xArm850} x {original, gripper2}` mounting, all four in
+`config/fleet.json` under `arm_configs`. `cam` and `gripper` are parented to the arm
+**flange**, so their frames depend only on the mounting — never on the arm model. Two
+fragments sharing a mounting therefore carry identical cam/gripper frames, and
+`scripts/check-fragments.py` asserts exactly that. Run it after touching any arm fragment.
+
+Which configuration a given machine is gets decided **with the person at the machine** —
+`scripts/identify-config.py` does the math and tells them what to look at. See the skill.
 
 Do not fork a fragment to express a value. Upstream has a forked pair
 (`ufactory-xarm6-realsense` / `ufactory-xarm-realsense-not-backwards`) that differ only by
