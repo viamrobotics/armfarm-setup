@@ -87,15 +87,35 @@ log — it prints both, and the error names the one that failed.
 
 ## 5. Register and configure in Viam
 
-```
-./scripts/provision-viam.py --name armfarmN --cam-serial <DEVICE serial> --wall left|right
-./scripts/provision-viam.py --name armfarmN --cam-serial <serial> --wall left --apply --write-config
-```
-
-Needs an org-scoped key in `VIAM_API_KEY_ID` / `VIAM_API_KEY`. Have the user run
+Needs an org-scoped key in `VIAM_API_KEY_ID` / `VIAM_API_KEY`. Have the person run
 `viam login` as themselves and mint one; don't reuse someone else's.
 
-Then `sudo systemctl restart viam-agent`.
+Dry run first — it prints the part config and tells you whether the agent is already there:
+
+```
+./scripts/provision-viam.py --name armfarmN --cam-serial <DEVICE serial> \
+    --wall left|right --arm <one of the four configs>
+```
+
+Then apply. **Use `sudo -E`** so the env vars survive:
+
+```
+# fresh box - no viam-agent yet
+sudo -E ./scripts/provision-viam.py --name armfarmN --cam-serial <s> --wall left \
+    --arm xarm6-gripper2 --apply --install-agent
+
+# box that already has the agent
+sudo -E ./scripts/provision-viam.py --name armfarmN --cam-serial <s> --wall left \
+    --arm xarm6-gripper2 --apply --write-config
+```
+
+`--install-agent` runs Viam's official installer, which writes `/etc/viam.json` and sets
+up the service itself. It fetches and executes a remote script as root — that is the
+documented install path, but say so before running it. Credentials are passed through the
+environment, not the command line, so they don't show up in `ps`.
+
+Without either flag the script writes the config to the home directory and prints the
+command to install it, which is the safe default if you are unsure.
 
 ## 6. Verify
 
