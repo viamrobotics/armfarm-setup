@@ -1,0 +1,2 @@
+# for scripts/provision-viam.py and scripts/update-fragments.py
+viam-sdk>=0.80.0

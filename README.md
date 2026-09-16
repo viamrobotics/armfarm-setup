@@ -30,4 +30,4 @@ Everything dry-runs by default and takes `--apply`.
 
 - Viam CLI, authenticated as yourself (`viam login`)
 - an org-scoped API key in `VIAM_API_KEY_ID` / `VIAM_API_KEY` for the Python scripts
-- `pip install viam-sdk` for `provision-viam.py` and `update-fragments.py`
+- `pip install -r requirements.txt` for `provision-viam.py` and `update-fragments.py`
