@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # One command to take a box from bare to a working arm farm machine.
 #
-#   sudo bash setup.sh armfarm4 --wall right --arm xarm6-gripper2
+#   sudo bash setup.sh armfarm4 --wall right --arm xarm6-gripper2 --arm-ip 192.168.1.233
+#
+# --arm-ip is the arm controller's address. It differs per machine; fleet.json only
+# holds a default. Omit it only if you have confirmed this arm uses that default.
 #
 # Works on both fleet box shapes - one onboard NIC plus a USB adapter, or two onboard
 # ethernet ports. If the ports cannot be told apart it stops and tells you to add
@@ -19,12 +22,15 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$here"
 
 name="${1:-}"; shift || true
-wall=""; arm=""; cam=""; net_args=()
+wall=""; arm=""; cam=""; arm_ip=""; net_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --wall) wall="$2"; shift 2 ;;
     --arm)  arm="$2";  shift 2 ;;
     --cam-serial) cam="$2"; shift 2 ;;
+    # The arm controller address. Differs per machine - uFactory ships .212 but they
+    # get reassigned, so confirm it rather than assuming the fleet.json default.
+    --arm-ip) arm_ip="$2"; net_args+=(--arm-ip "$2"); shift 2 ;;
     # Passed through to setup-network.sh. Only needed when this box's ports cannot be
     # told apart automatically - it says so and names the flag if that happens.
     --arm-nic) net_args+=(--arm-nic "$2"); shift 2 ;;
@@ -80,6 +86,7 @@ fi
 step "4/4  register and configure in Viam"
 venv/bin/python scripts/provision-viam.py \
   --name "$name" --cam-serial "$cam" --wall "$wall" --arm "$arm" \
+  ${arm_ip:+--arm-ip "$arm_ip"} \
   --apply --write-config
 
 echo
@@ -88,6 +95,7 @@ echo "machine : $name"
 echo "arm     : $arm"
 echo "camera  : $cam"
 echo "wall    : $wall"
+echo "arm ip  : ${arm_ip:-(fleet.json default)}"
 echo
 echo "Check it: https://app.viam.com  -> hackathons -> Fine Motor Skills -> $name"
 echo "Mounting ($arm) is still a guess until verified against the real arm."

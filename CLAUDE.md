@@ -70,9 +70,16 @@ mounting handedness — they drifted, and one of them is wrong. That is the fail
   these boxes have no wifi to fall back to (tailscale rides the same underlay, so that is
   gone too). `pick-nics.sh` refuses this outright and only yields to `--force`. The old
   "first PCIe NIC wins" rule walked straight into it on a two-port box.
-- **The arm controller is `192.168.1.212`.** The host must be a *different* address on that
-  subnet (`192.168.1.150`). Setting the host to `.212` fails duplicate-address detection
-  every time the cable actually reaches the arm.
+- **The arm controller address DIFFERS PER MACHINE.** `192.168.1.212` is uFactory's
+  factory default and what `fleet.json` holds, but arms get readdressed and many are not
+  on `.212` (armfarm5's is `.233`). It is a fragment **variable**, not a fleet constant —
+  confirm each arm and pass `--arm-ip`. Assuming the default gives you a machine that
+  provisions cleanly and then sits at `STATE_UNHEALTHY` with a connection timeout, which
+  looks like a broken arm rather than a wrong address.
+- **The host must be a different address on the arm subnet** (`192.168.1.150`). Setting the
+  host to the arm's address fails duplicate-address detection every time the cable actually
+  reaches the arm. `provision-viam.py` rejects an `--arm-ip` equal to the host, or off the
+  arm subnet, before it writes anything.
 - **sysfs `serial` for a RealSense is the ASIC serial, not the device serial** the driver
   matches on. Wrong one => `failed to start device`. Use `rs-enumerate-devices`, or read the
   device serial out of viam-server's startup log.

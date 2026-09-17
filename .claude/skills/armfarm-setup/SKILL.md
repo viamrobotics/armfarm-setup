@@ -43,7 +43,8 @@ a different terminal, in a different directory.
 Once bootstrap is done and the arm is plugged in and powered:
 
 ```
-sudo bash /path/to/armfarm-setup/setup.sh armfarmN --wall left|right --arm xarm6-gripper2
+sudo bash /path/to/armfarm-setup/setup.sh armfarmN --wall left|right \
+    --arm xarm6-gripper2 --arm-ip 192.168.1.NNN
 ```
 
 That runs steps 2-5 below in order — hostname/mDNS/ssh, networking, camera serial, Viam
@@ -69,6 +70,36 @@ Gives you: compute model, every network port with the role it will be given and 
 whether the arm is reachable, the RealSense, ssh state, viam-agent state. **Read the
 output before doing anything.** It uses the same port-selection logic `setup-network.sh`
 does, so if it says it cannot choose ports, step 3 will stop in the same place.
+
+## 1a. The two values that differ on every machine
+
+Most of what provisioning needs is fleet-wide and lives in `config/fleet.json`. Exactly two
+things are per-machine, and both have bitten people:
+
+**The arm controller's IP address.** `fleet.json` holds `192.168.1.212` — that is
+uFactory's factory default, **not a fleet constant**. Arms get readdressed and many are
+not on it (armfarm5's arm is `192.168.1.233`). Always confirm this arm's address and pass
+`--arm-ip`; it is a fragment variable, so it costs nothing to set correctly.
+
+Getting it wrong is nasty because nothing fails loudly: the machine registers, the config
+applies, and then the arm sits at `STATE_UNHEALTHY` with a connection timeout that reads
+like a dead controller or a bad cable. Check the address before blaming the hardware.
+
+How to find it, in order of effort:
+
+- **Ask.** Whoever set the arm up knows, and the xArm's own display/Studio shows it.
+- **Once the host is on the arm subnet**, scan it:
+  `ip neigh flush dev <arm-nic>; for i in $(seq 2 254); do ping -c1 -W1 192.168.1.$i >/dev/null 2>&1 & done; wait; ip -4 neigh show dev <arm-nic> | grep -v FAILED`
+- **Before any IP is configured**, the arm still answers IPv6 link-local, which is enough
+  to prove the cable and port are good even when you do not yet know the v4 address:
+  `ping6 -c3 -I <arm-nic> ff02::1` then `ip -6 neigh show dev <arm-nic>`
+
+`provision-viam.py` rejects an `--arm-ip` that is off the arm subnet or equal to the host
+address, so a typo fails before anything is written.
+
+**The RealSense device serial.** Already handled — `setup.sh` reads it from the driver on
+each box. Just never hand-copy one between machines, and never use the sysfs serial
+(step 4).
 
 ## 1b. Work out which of the FOUR configurations this machine is
 
@@ -160,8 +191,9 @@ same underlay, so that goes too. Recovering means physically going to the machin
 The arm port usually has **no cable yet** at this point. That is fine — the profile is
 saved and comes up when the arm is plugged in. The script says so rather than failing.
 
-Verify: `ping 192.168.1.212` succeeds, and `ip -4 route` shows the wired default ahead of
-wifi (or is the only default, on a box with no wifi).
+Verify: `ping <this arm's ip>` succeeds, and `ip -4 route` shows the wired default ahead of
+wifi (or is the only default, on a box with no wifi). Pass `--arm-ip` so the script checks
+the right address — it defaults to `fleet.json`, which is only the factory default.
 
 ## 4. Camera serial
 
@@ -186,7 +218,7 @@ Dry run first — it prints the part config and tells you whether the agent is a
 
 ```
 ./scripts/provision-viam.py --name armfarmN --cam-serial <DEVICE serial> \
-    --wall left|right --arm <one of the four configs>
+    --wall left|right --arm <one of the four configs> --arm-ip <this arm's ip>
 ```
 
 Then apply. **Use `sudo -E`** so the env vars survive:
@@ -194,11 +226,11 @@ Then apply. **Use `sudo -E`** so the env vars survive:
 ```
 # fresh box - no viam-agent yet
 sudo -E ./scripts/provision-viam.py --name armfarmN --cam-serial <s> --wall left \
-    --arm xarm6-gripper2 --apply --install-agent
+    --arm xarm6-gripper2 --arm-ip <this arm's ip> --apply --install-agent
 
 # box that already has the agent
 sudo -E ./scripts/provision-viam.py --name armfarmN --cam-serial <s> --wall left \
-    --arm xarm6-gripper2 --apply --write-config
+    --arm xarm6-gripper2 --arm-ip <this arm's ip> --apply --write-config
 ```
 
 `--install-agent` runs Viam's official installer, which writes `/etc/viam.json` and sets

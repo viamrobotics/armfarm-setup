@@ -2,6 +2,7 @@
 # Arm link and office LAN, on whichever ports this box actually has.
 #
 #   sudo bash setup-network.sh
+#   sudo bash setup-network.sh --arm-ip 192.168.1.233     # this arm's address
 #   sudo bash setup-network.sh --dry-run                  # show the plan, change nothing
 #   sudo bash setup-network.sh --arm-nic enp87s0          # name a port explicitly
 #   sudo bash setup-network.sh --lan-nic enp86s0 --force  # override the safety guard
@@ -15,6 +16,9 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$here/lib/pick-nics.sh"
 
 ARM_HOST_IP="192.168.1.150/24"
+# The controller address differs per machine (uFactory ships .212, but they get
+# reassigned). Only used to verify the link; the host address is what we configure.
+ARM_IP="$(python3 -c 'import json,pathlib;print(json.loads((pathlib.Path("'"$here"'").parent/"config"/"fleet.json").read_text())["arm"]["controller_ip"])' 2>/dev/null || echo 192.168.1.212)"
 LAN_METRIC=100          # lower than wifi -> wired is default route, wifi auto-fails over
 DRY_RUN=0
 
@@ -23,6 +27,7 @@ while [[ $# -gt 0 ]]; do
     --arm-nic) ARM_NIC_OVERRIDE="$2"; shift 2 ;;
     --lan-nic) LAN_NIC_OVERRIDE="$2"; shift 2 ;;
     --force)   NIC_FORCE=1; shift ;;
+    --arm-ip)  ARM_IP="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -46,6 +51,7 @@ lan_mac=$(cat "/sys/class/net/$LAN_NIC/address")
 lan_bus="$(_nic_bus "$LAN_NIC")"
 echo "== arm NIC: $ARM_NIC ($arm_mac)   lan NIC: $LAN_NIC ($lan_mac) =="
 echo "   $NIC_WHY"
+echo "   arm controller expected at $ARM_IP (per-machine; --arm-ip to change)"
 [[ $DRY_RUN -eq 1 ]] && echo "   DRY RUN - nothing will be changed"
 
 # Reconfiguring the LAN port drops its connection for a moment. Harmless on a console,
@@ -119,5 +125,6 @@ echo "== result =="
 ip -br -4 addr show "$ARM_NIC" | sed 's/^/  /'
 ip -br -4 addr show "$LAN_NIC" | sed 's/^/  /'
 ip -4 route | grep default | sed 's/^/  /'
-echo -n "  arm 192.168.1.212: "
-ping -c2 -W2 -q 192.168.1.212 >/dev/null 2>&1 && echo "reachable" || echo "UNREACHABLE - check cabling"
+echo -n "  arm $ARM_IP: "
+ping -c2 -W2 -q "$ARM_IP" >/dev/null 2>&1 && echo "reachable" \
+  || echo "UNREACHABLE - check cabling, and confirm this arm's address is $ARM_IP"

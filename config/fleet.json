@@ -47,6 +47,7 @@
     "name": "armfarm-workcell-obstacles"
   },
   "arm": {
+    "_controller_ip_note": "DEFAULT ONLY - the controller address differs from machine to machine. uFactory ships .212 but they get reassigned. Confirm each arm and pass --arm-ip; provision-viam.py validates it is on the arm subnet and not the host address.",
     "controller_ip": "192.168.1.212",
     "host_ip_cidr": "192.168.1.150/24",
     "subnet": "192.168.1.0/24"

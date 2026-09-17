@@ -14,11 +14,12 @@
 Credentials: an org-scoped key in VIAM_API_KEY_ID / VIAM_API_KEY.
 Dry run by default; --apply to write.
 
-  provision-viam.py --name armfarm7 --cam-serial 243322071795 --wall left
+  provision-viam.py --name armfarm7 --cam-serial 243322071795 --wall left \
+       --arm-ip 192.168.1.233
   sudo -E provision-viam.py --name armfarm7 --cam-serial ... --wall left \
        --arm xarm850-gripper2 --apply --install-agent
 """
-import argparse, asyncio, json, os, pathlib, shutil, subprocess, sys, tempfile, urllib.request
+import argparse, asyncio, ipaddress, json, os, pathlib, shutil, subprocess, sys, tempfile, urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FLEET = json.loads((ROOT / "config" / "fleet.json").read_text())
@@ -65,7 +66,7 @@ def build_part_config(args):
     return {"fragments": [
         {"id": robot["id"], "variables": {
             **FLEET["robot_fragment_vars"],
-            "arm-ip-address": FLEET["arm"]["controller_ip"],
+            "arm-ip-address": args.arm_ip,
             "cam-serial-number": args.cam_serial}},
         {"id": FLEET["obstacles_fragment"]["id"], "variables": {
             "table-translation": wd["table-translation"],
@@ -82,6 +83,9 @@ async def main():
     p.add_argument("--cam-serial", required=True,
                    help="DEVICE serial (not the ASIC serial sysfs reports)")
     p.add_argument("--wall", required=True, choices=["left", "right"])
+    p.add_argument("--arm-ip", default=FLEET["arm"]["controller_ip"],
+                   help="arm controller address. Differs per machine; the fleet.json "
+                        "value is only a default (uFactory ships .212)")
     p.add_argument("--arm", default="xarm6-gripper2",
                    choices=["xarm6-original", "xarm6-gripper2",
                             "xarm850-original", "xarm850-gripper2"])
@@ -91,6 +95,19 @@ async def main():
     p.add_argument("--write-config", action="store_true",
                    help="agent already installed: write /etc/viam.json (needs sudo)")
     args = p.parse_args()
+
+    # The arm link is a /24 shared with the host. An address off that subnet, or equal
+    # to the host's own, cannot work - catch it here rather than at STATE_READY time.
+    host_if = ipaddress.ip_interface(FLEET["arm"]["host_ip_cidr"])
+    try:
+        arm_ip = ipaddress.ip_address(args.arm_ip)
+    except ValueError:
+        p.error(f"--arm-ip {args.arm_ip!r} is not a valid IP address")
+    if arm_ip not in host_if.network:
+        p.error(f"--arm-ip {arm_ip} is not on the arm subnet {host_if.network} "
+                f"(host is {host_if.ip})")
+    if arm_ip == host_if.ip:
+        p.error(f"--arm-ip {arm_ip} collides with the host address {host_if.ip}")
 
     cfg = build_part_config(args)
     have_agent = agent_installed()

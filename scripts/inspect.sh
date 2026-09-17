@@ -38,10 +38,13 @@ fi
 
 echo
 echo "=== arm controller reachable? ==="
-if ping -c1 -W2 192.168.1.212 >/dev/null 2>&1; then
-  echo "  192.168.1.212 OK ($(ping -c2 -W2 -q 192.168.1.212 2>/dev/null | awk -F'/' '/rtt/{print $5" ms avg"}'))"
+# Per-machine value; fleet.json only supplies the default. Override: inspect.sh <arm-ip>
+ARM_IP="${1:-$(python3 -c "import json,pathlib;print(json.loads((pathlib.Path('$here').parent/'config'/'fleet.json').read_text())['arm']['controller_ip'])" 2>/dev/null || echo 192.168.1.212)}"
+if ping -c1 -W2 "$ARM_IP" >/dev/null 2>&1; then
+  echo "  $ARM_IP OK ($(ping -c2 -W2 -q "$ARM_IP" 2>/dev/null | awk -F'/' '/rtt/{print $5" ms avg"}'))"
 else
-  echo "  192.168.1.212 UNREACHABLE (expected before network setup)"
+  echo "  $ARM_IP UNREACHABLE (expected before network setup; also check this arm's"
+  echo "  actual address - the controller address differs per machine)"
 fi
 
 echo
