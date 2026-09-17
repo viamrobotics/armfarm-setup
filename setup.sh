@@ -84,10 +84,22 @@ else
 fi
 
 step "4/4  register and configure in Viam"
+# Fresh box vs re-run. --write-config ends in `systemctl restart viam-agent` with
+# check=True, so on a box that has no agent yet it throws instead of installing one.
+# Same test provision-viam.py's agent_installed() uses.
+if command -v viam-agent >/dev/null 2>&1 || [[ -x /opt/viam/bin/viam-agent ]] \
+   || systemctl list-unit-files viam-agent.service 2>/dev/null | grep -q viam-agent.service; then
+  agent_flag=--write-config
+  echo "  viam-agent present -> --write-config"
+else
+  agent_flag=--install-agent
+  echo "  no viam-agent -> --install-agent (runs Viam's official installer as root,"
+  echo "  fetching packages.viam.com/apps/viam-agent/install.sh)"
+fi
 venv/bin/python scripts/provision-viam.py \
   --name "$name" --cam-serial "$cam" --wall "$wall" --arm "$arm" \
   ${arm_ip:+--arm-ip "$arm_ip"} \
-  --apply --write-config
+  --apply "$agent_flag"
 
 echo
 echo "=============== done ==============="
