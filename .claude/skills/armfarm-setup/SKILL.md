@@ -133,6 +133,20 @@ calibration error, and tuning the numbers to fix it produces something that is w
 new way. Position is unambiguous; orientation by eye is not. This exact trap cost an hour
 once already.
 
+**And do not reason from the gripper at all.** The two mountings differ by 180° about the
+**tool axis**; the gripper sits *on* that axis at `t=(0,0,150)`, so the rotation moves it
+**0mm**. Its position is identical either way and only its orientation changes. Asking
+"is the gripper right-side up?" feels like independent evidence and is not — on armfarm5 it
+pointed at `gripper2` while the positional test correctly said `original`. The camera is
+83mm off-axis, moves 168mm, and is the only thing that discriminates.
+
+**A wrist near 180° makes this maximally confusing.** Rotating the `gripper2` camera
+position 180° about the tool axis lands exactly on the `original` position, so with the
+wrist at a half turn the *correct* config puts the camera precisely where you would expect
+the *wrong* one. armfarm5's wrist was at 192°. The 168mm separation the script reports is
+in world coordinates and is constant regardless of wrist angle, so the test stays valid —
+trust it over the picture in your head.
+
 **Chicken and egg:** you need a config applied before you can query the arm's pose. Apply
 your best guess, run the test, and switch the fragment if wrong - swapping is one delete
 plus one add, and nothing else in the machine config changes.
@@ -245,7 +259,9 @@ command to install it, which is the safe default if you are unsure.
 
 - all resources `STATE_READY`, machine `STATE_RUNNING`
 - grab an image from `cam` — confirms the serial and the camera end to end
-- check the 3D scene: camera on the correct side of the wrist, gripper not upside down
+- check the 3D scene against the real robot: the camera on the correct side of the wrist is
+  the meaningful check. If the scene disagrees with the robot, re-run step 1b rather than
+  adjusting numbers - and note the gripper looking "right" proves nothing either way
 
 If the camera looks wrong in the scene, **do not guess at the numbers**. Get
 `GetEndPosition` from the arm, compute where each candidate frame would put the camera in

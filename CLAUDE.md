@@ -45,6 +45,17 @@ fragments sharing a mounting therefore carry identical cam/gripper frames, and
 Which configuration a given machine is gets decided **with the person at the machine** —
 `scripts/identify-config.py` does the math and tells them what to look at. See the skill.
 
+**The gripper cannot tell you which mounting it is.** The two mountings differ by a 180°
+rotation about the **tool axis**, and the gripper sits *on* that axis at `t=(0,0,150)`, so
+the rotation moves it **0mm**. Its position is identical under both mountings; only its
+orientation changes — the one cue that is not eyeball-able. The camera is 83mm off-axis,
+so the same rotation moves it 168mm, which is why the camera is the discriminator.
+
+This has already produced one wrong answer: armfarm5's gripper reads "right side up" to a
+person standing at it, which the old `fleet.json` notes labelled `gripper2` — but the
+positional test said `original`, and `original` was correct. The notes described the
+gripper's appearance, which is not a fact the frames encode. Do not reintroduce them.
+
 Do not fork a fragment to express a value. Upstream has a forked pair
 (`ufactory-xarm6-realsense` / `ufactory-xarm-realsense-not-backwards`) that differ only by
 mounting handedness — they drifted, and one of them is wrong. That is the failure mode.

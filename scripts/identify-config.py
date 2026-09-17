@@ -22,8 +22,11 @@ import argparse, math, re
 
 # cam translation in the arm-flange frame, per mounting
 CAM_T = {
-    "original": (83.0, -14.0, 18.0),    # gripper upside down  (ufactory-xarm6-realsense)
-    "gripper2": (-83.0, 14.0, 18.0),    # gripper right-side up (xarm-realsense-gripper2)
+    # The mountings differ by 180 deg about the TOOL AXIS. The gripper sits on that axis
+    # at (0,0,150) so it moves 0mm and cannot discriminate; the camera is 83mm off-axis
+    # and moves 168mm, which is the whole reason this script looks at the camera.
+    "original": (83.0, -14.0, 18.0),    # (ufactory-xarm6-realsense)
+    "gripper2": (-83.0, 14.0, 18.0),    # (xarm-realsense-gripper2)
 }
 
 

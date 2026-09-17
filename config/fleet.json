@@ -7,7 +7,7 @@
     "name": "Fine Motor Skills",
     "id": "310sld03v2"
   },
-  "_arm_configs": "Four combinations: {xArm6, xArm850} x {original, gripper2} mounting. cam and gripper are parented to the arm FLANGE, so calibration depends only on the mounting, never on the arm model. Same mounting => identical cam/gripper frames across models; scripts/check-fragments.py enforces that.",
+  "_arm_configs": "Four combinations: {xArm6, xArm850} x {original, gripper2} mounting. cam and gripper are parented to the arm FLANGE, so calibration depends only on the mounting, never on the arm model. Same mounting => identical cam/gripper frames across models; scripts/check-fragments.py enforces that. THE TWO MOUNTINGS DIFFER BY 180 DEGREES ABOUT THE TOOL AXIS. The gripper sits ON that axis at t=(0,0,150), so the rotation moves it 0mm - its position is identical under both mountings and only its orientation changes, which is exactly the cue you cannot judge by eye. The camera is 83mm off-axis, so it moves 168mm. Decide the mounting on CAMERA POSITION via scripts/identify-config.py; never infer it from how the gripper looks.",
   "arm_configs": {
     "xarm6-original": {
       "id": "f6e98d80-20a0-4fb6-9cb3-7b527a91ec10",
@@ -15,7 +15,7 @@
       "owner": "viam-dev (public, upstream)",
       "model": "viam:ufactory:xArm6",
       "mounting": "original",
-      "note": "gripper UPSIDE DOWN. cam t=(83,-14,18)"
+      "note": "cam t=(83,-14,18). Mounting is decided by CAMERA POSITION - the gripper cannot tell you, see _arm_configs"
     },
     "xarm6-gripper2": {
       "id": "859f2598-60f1-43a2-8df2-13ffbee949cc",
@@ -23,7 +23,7 @@
       "owner": "hackathons",
       "model": "viam:ufactory:xArm6",
       "mounting": "gripper2",
-      "note": "gripper RIGHT-SIDE UP. cam t=(-83,14,18), gripper th=180"
+      "note": "cam t=(-83,14,18), gripper th=180. Mounting is decided by CAMERA POSITION - the gripper cannot tell you, see _arm_configs"
     },
     "xarm850-original": {
       "id": "fd2be28c-71e5-4b8a-90a8-a514dbe75ca7",
@@ -31,7 +31,7 @@
       "owner": "hackathons",
       "model": "viam:ufactory:xArm850",
       "mounting": "original",
-      "note": "xArm850, gripper UPSIDE DOWN"
+      "note": "xArm850. cam t=(83,-14,18). Mounting is decided by CAMERA POSITION - the gripper cannot tell you, see _arm_configs"
     },
     "xarm850-gripper2": {
       "id": "086f4921-8427-47b6-92e0-dbdc87f2267c",
@@ -39,7 +39,7 @@
       "owner": "hackathons",
       "model": "viam:ufactory:xArm850",
       "mounting": "gripper2",
-      "note": "xArm850, gripper RIGHT-SIDE UP"
+      "note": "xArm850. cam t=(-83,14,18), gripper th=180. Mounting is decided by CAMERA POSITION - the gripper cannot tell you, see _arm_configs"
     }
   },
   "obstacles_fragment": {
