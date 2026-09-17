@@ -3,8 +3,13 @@
 #
 #   bash scripts/bootstrap.sh
 #
-# Needs NO root. Installs the Viam CLI and the Python SDK, then gets you an
-# org API key. Idempotent - safe to re-run; it skips whatever is already done.
+# Installs the Viam CLI and the Python SDK, then gets you an org API key.
+# Idempotent - safe to re-run; it skips whatever is already done.
+#
+# Root: needed for exactly one thing, and only on an image whose python3 ships
+# without ensurepip (stock Pop!_OS 24.04 is one) - installing python3-venv. It
+# tries passwordless sudo and otherwise prints the one command to run. Nothing
+# else here touches root.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -46,7 +51,32 @@ fi
 if [[ -x venv/bin/python ]] && venv/bin/python -c "import viam" 2>/dev/null; then
   ok "python SDK ready (venv/)"
 else
+  # Stock Pop!_OS / Ubuntu desktop ships python3 WITHOUT ensurepip - the stdlib venv
+  # module is there but `python3 -m venv` fails at the bootstrap-pip step, leaving a
+  # half-built venv/ with no bin/pip. This is the one step here that needs root, so
+  # it asks explicitly rather than failing on an error about "ensurepip".
+  if ! python3 -c "import ensurepip" 2>/dev/null; then
+    # Ubuntu names it per-version (python3.12-venv) and points you at that in its
+    # error; the unversioned python3-venv is a metapackage that pulls the right one.
+    # Ask for both so this works whichever the distro actually carries.
+    pyver="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+    pkgs=("python${pyver}-venv" python3-venv)
+    info "python3 has no ensurepip - installing ${pkgs[0]} (needs root)"
+    if sudo -n apt-get install -y "${pkgs[@]}" >/dev/null 2>&1 \
+       || { sudo -n apt-get update >/dev/null 2>&1 \
+            && sudo -n apt-get install -y "${pkgs[@]}" >/dev/null 2>&1; }; then
+      ok "${pkgs[0]} installed"
+    else
+      warn "could not install ${pkgs[0]} (needs root). Run this, then re-run bootstrap:"
+      echo
+      echo "        sudo apt-get install -y ${pkgs[0]}"
+      echo
+      exit 1
+    fi
+  fi
   info "creating venv/ and installing the Viam SDK"
+  # A previous failed attempt leaves a venv/ with no pip in it; start clean.
+  [[ -e venv && ! -x venv/bin/pip ]] && rm -rf venv
   python3 -m venv venv
   venv/bin/pip install -q --upgrade pip
   venv/bin/pip install -q -r requirements.txt
