@@ -1,2 +1,3 @@
 # for scripts/provision-viam.py and scripts/update-fragments.py
 viam-sdk>=0.80.0
+pyrealsense2>=2.55  # device serial for the wrist RealSense (sysfs reports the ASIC serial)

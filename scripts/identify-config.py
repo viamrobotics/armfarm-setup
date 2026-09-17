@@ -68,8 +68,18 @@ def main():
     a_, b_ = pos["original"], pos["gripper2"]
     sep = math.dist(a_, b_)
     dx, dy = b_[0] - a_[0], b_[1] - a_[1]
-    axis, delta = ("X (fore/aft)", dx) if abs(dx) >= abs(dy) else ("Y (left/right)", dy)
-    print(f"\n  separation: {sep:.0f} mm, mostly along {axis}\n")
+    axis = "X (fore/aft)" if abs(dx) >= abs(dy) else "Y (left/right)"
+
+    # "further from the base" is RADIAL distance from the base at the world origin,
+    # never the sign of one world axis. With the arm reaching into -Y a +Y step moves
+    # the camera TOWARD the base, so a signed-axis test inverts the answer and picks
+    # the wrong mounting - the exact failure this script exists to prevent.
+    base = (0.0, 0.0, 0.0)
+    d_orig, d_grip = math.dist(base, a_), math.dist(base, b_)
+    delta = d_grip - d_orig
+
+    print(f"\n  separation: {sep:.0f} mm, mostly along {axis}")
+    print(f"  distance from base: original {d_orig:.0f} mm, gripper2 {d_grip:.0f} mm\n")
     print("ASK THE PERSON AT THE MACHINE:")
     print("  Looking at the wrist, is the camera nearer the arm's base, or further from it?")
     print(f"    further from base  -> {'gripper2' if delta > 0 else 'original'}")

@@ -11,6 +11,50 @@ list of gotchas — several of them look like unrelated problems when you hit th
 Work **verify-then-apply**: gather facts, show the user what you intend to do, apply on
 confirmation. Every script dry-runs by default.
 
+## 0. Tooling and auth — DO THIS FIRST
+
+A fresh or repurposed box has none of this, and every later step is blocked on it. Two
+commands, in this order:
+
+```
+bash scripts/bootstrap.sh          # no root: viam CLI, python SDK, org API key
+viam login                         # only if bootstrap says to - it opens a browser
+```
+
+`bootstrap.sh` is idempotent. It installs the Viam CLI to `~/.local/bin`, builds `venv/`
+with the SDK, checks org access, and **mints the org API key itself** into `orgkey.txt`.
+Never ask someone to paste a key — once they are logged in the CLI can mint one.
+
+Traps it handles, each of which has cost real time:
+
+- **`~/.viam` owned by root.** A box someone built with `sudo viam login` has a root-owned
+  `~/.viam`, and `viam login` as a normal user then cannot cache its token. Needs
+  `sudo chown -R "$USER:$USER" ~/.viam` — bootstrap detects it and says so.
+- **PEP 668.** Ubuntu 24.04 refuses a system `pip install`. The venv must be at `venv/` —
+  that is the path `.gitignore` covers; `.venv/` is not.
+- **The CLI is not in apt** and is usually absent entirely.
+
+**You cannot answer a sudo password prompt.** So do not hand the user root steps one at a
+time — that is what `setup.sh` is for. And always give absolute paths: the user is often in
+a different terminal, in a different directory.
+
+## The fast path: one command
+
+Once bootstrap is done and the arm is plugged in and powered:
+
+```
+sudo bash /path/to/armfarm-setup/setup.sh armfarmN --wall left|right --arm xarm6-gripper2
+```
+
+That runs steps 2-5 below in order — hostname/mDNS/ssh, networking, camera serial, Viam
+registration and fragments — with a single password prompt. It is safe to re-run: the
+machine is reused rather than duplicated. The individual steps below are the debugging
+path, not the normal one.
+
+Then verify (step 6). Expect the arm to be the last thing to come up, and expect
+**"Emergency Stop Button Pushed In"** — that is a physical button on the xArm controller,
+not a configuration problem.
+
 ## 1. Inspect
 
 ```
@@ -81,9 +125,17 @@ Verify: `ping 192.168.1.212` succeeds, and `ip -4 route` shows the wired default
 
 ## 4. Camera serial
 
-You need the **device** serial, not the ASIC serial. `rs-enumerate-devices` if installed;
-otherwise apply the config with any value, then read the real one from the module's startup
-log — it prints both, and the error names the one that failed.
+You need the **device** serial, not the ASIC serial. `setup.sh` reads it for you; to get it
+by hand, ask the driver directly:
+
+```
+venv/bin/python -c "import pyrealsense2 as rs; \
+  print(list(rs.context().query_devices())[0].get_info(rs.camera_info.serial_number))"
+```
+
+`pyrealsense2` is in `requirements.txt`. Do not reach for `rs-enumerate-devices` — it lives
+in `librealsense2-utils`, which is **not** in Ubuntu's default repos. If the query returns
+no device, viam-server is holding it: `sudo systemctl stop viam-agent` first.
 
 ## 5. Register and configure in Viam
 

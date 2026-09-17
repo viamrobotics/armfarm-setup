@@ -124,14 +124,20 @@ async def main():
         auth_entity=kid, credentials=Credentials(type="api-key", payload=key)))
     try:
         app = client.app_client
-        robot_id = await app.new_robot(name=args.name, location_id=FLEET["location"]["id"])
-        print(f"\n  created machine: {robot_id}")
+        existing = [r for r in await app.list_robots(location_id=FLEET["location"]["id"])
+                    if r.name == args.name]
+        if existing:
+            robot_id = existing[0].id
+            print(f"\n  reusing machine: {args.name} ({robot_id})")
+        else:
+            robot_id = await app.new_robot(name=args.name, location_id=FLEET["location"]["id"])
+            print(f"\n  created machine: {robot_id}")
 
         part = (await app.get_robot_parts(robot_id))[0]
         part_id = part.proto.id
         print(f"  main part: {part_id}")
 
-        new_kid, new_key = await app.create_key(
+        new_key, new_kid = await app.create_key(
             org_id=FLEET["org"]["id"],
             authorizations=[APIKeyAuthorization(
                 role="owner", resource_type="robot", resource_id=robot_id)],
@@ -156,6 +162,11 @@ async def main():
                 sys.exit("--write-config needs root: re-run under `sudo -E`")
             pathlib.Path("/etc/viam.json").write_text(json.dumps(viam_json, indent=2) + "\n")
             os.chmod("/etc/viam.json", 0o644)
+            stale = [c for d in ("/root/.viam", "/opt/viam")
+                     for c in pathlib.Path(d).glob("cached_cloud_config*") if d and c.exists()]
+            for c in stale:
+                c.unlink()
+                print(f"  cleared stale cached config: {c}")
             subprocess.run(["systemctl", "restart", "viam-agent"], check=True)
             print("  wrote /etc/viam.json and restarted viam-agent")
         else:
