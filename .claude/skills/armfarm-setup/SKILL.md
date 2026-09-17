@@ -51,6 +51,10 @@ registration and fragments — with a single password prompt. It is safe to re-r
 machine is reused rather than duplicated. The individual steps below are the debugging
 path, not the normal one.
 
+On a box with two onboard ethernet ports, **have the office LAN plugged in first** — that
+is how the ports are told apart (step 3). If it cannot tell, it stops and asks for
+`--arm-nic` / `--lan-nic`, which `setup.sh` accepts and passes through.
+
 Then verify (step 6). Expect the arm to be the last thing to come up, and expect
 **"Emergency Stop Button Pushed In"** — that is a physical button on the xArm controller,
 not a configuration problem.
@@ -61,8 +65,10 @@ not a configuration problem.
 bash scripts/inspect.sh
 ```
 
-Gives you: compute model, both NICs with their roles, whether the arm is reachable, the
-RealSense, ssh state, viam-agent state. **Read the output before doing anything.**
+Gives you: compute model, every network port with the role it will be given and why,
+whether the arm is reachable, the RealSense, ssh state, viam-agent state. **Read the
+output before doing anything.** It uses the same port-selection logic `setup-network.sh`
+does, so if it says it cannot choose ports, step 3 will stop in the same place.
 
 ## 1b. Work out which of the FOUR configurations this machine is
 
@@ -115,13 +121,47 @@ and needs a restart to stop.
 ## 3. Networking
 
 ```
+sudo bash scripts/setup-network.sh --dry-run   # prints the plan, changes nothing
 sudo bash scripts/setup-network.sh
 ```
 
-Arm link on the onboard PCIe NIC (static `192.168.1.150/24`, never-default, MAC-bound),
-office LAN on the USB NIC (DHCP, route-metric 100 so wired is default and wifi fails over).
+Unlike the python scripts this one applies when run, so preview it with `--dry-run` first
+on any box whose LAN port it is about to reconfigure.
 
-Verify: `ping 192.168.1.212` succeeds, and `ip -4 route` shows the wired default ahead of wifi.
+Arm link (static `192.168.1.150/24`, never-default, MAC-bound) on one port, office LAN
+(DHCP, route-metric 100) on the other. Which port is which comes from
+`scripts/lib/pick-nics.sh`, because **the farm has two shapes of box**:
+
+| box | arm port | LAN port |
+|---|---|---|
+| one onboard NIC + USB adapter | the onboard port | the USB adapter |
+| **two onboard ethernet ports** (newer Meerkats) | the port *without* the default route | the port *with* it |
+
+On a two-port box the bus type cannot tell the ports apart, so the office LAN is
+identified by **which port currently holds the default route**. That means:
+
+- **Plug the office LAN in before running this step** on a two-port box. With no default
+  route it cannot tell the ports apart, and it stops rather than guessing.
+- If it stops, name them yourself — `inspect.sh` prints both ports with their MACs and
+  carrier state, which is usually enough to see which cable is which:
+
+```
+sudo bash scripts/setup-network.sh --arm-nic enp87s0 --lan-nic enp86s0
+```
+
+  The same two flags pass through `setup.sh`, plus `--force-nic` for the guard below.
+
+**The script refuses to put the arm on the port carrying the default route**, and you
+should let it. The arm profile is static and `never-default`; applying it to the live LAN
+port takes the box off the network, and these boxes have no wifi — tailscale rides the
+same underlay, so that goes too. Recovering means physically going to the machine.
+`--force` overrides it; wanting to is almost always a sign the ports are swapped.
+
+The arm port usually has **no cable yet** at this point. That is fine — the profile is
+saved and comes up when the arm is plugged in. The script says so rather than failing.
+
+Verify: `ping 192.168.1.212` succeeds, and `ip -4 route` shows the wired default ahead of
+wifi (or is the only default, on a box with no wifi).
 
 ## 4. Camera serial
 

@@ -12,7 +12,8 @@ Constants (org/location/fragment ids, arm IP, workcell geometry) live in
 |---|---|
 | `scripts/inspect.sh` | read-only; gathers every fact needed to provision. Run first. |
 | `scripts/setup-host.sh` | hostname, mDNS, ssh |
-| `scripts/setup-network.sh` | arm link + office LAN, NICs chosen by capability |
+| `scripts/setup-network.sh` | arm link + office LAN, ports chosen by `lib/pick-nics.sh` |
+| `scripts/lib/pick-nics.sh` | which port is the arm and which is the LAN. Sourced by both of the above |
 | `scripts/provision-viam.py` | create machine, mint key, write /etc/viam.json, apply fragments |
 | `scripts/update-fragments.py` | push local JSON into a Viam fragment (app API) |
 | `scripts/identify-config.py` | which of the four configs is this? (collaborative) |
@@ -53,7 +54,22 @@ mounting handedness — they drifted, and one of them is wrong. That is the fail
 - **avahi advertises the old hostname** until restarted. `setup-host.sh` does this; don't skip it.
 - **A stale generic NetworkManager profile will claim the arm NIC and DHCP-loop forever**
   (~45s cycle, endless desktop notifications, arm unreachable). The arm profile is bound
-  **by MAC**; the LAN profile is left unbound so any USB adapter picks it up.
+  **by MAC** and carries `autoconnect-priority 10` so it wins the port. `setup-network.sh`
+  disables every other ethernet profile on either port — *including unbound ones*, which is
+  the shape the offender usually has (`Ethernet connection 1`, attached to no device until
+  the moment it grabs something).
+- **Two shapes of box, and the port rule differs.** Older boxes have one onboard NIC plus a
+  USB ethernet adapter: arm on the onboard port, LAN on the USB one. Newer Meerkats have
+  **two onboard ethernet ports and no adapter**. Bus type cannot separate two onboard ports,
+  so the LAN port is identified as **the one currently carrying the default route** and the
+  arm gets the other. Consequence: **the office LAN must be plugged in and up before
+  `setup-network.sh` runs** on a two-port box — otherwise it cannot tell the ports apart and
+  stops, asking for `--arm-nic` / `--lan-nic`.
+- **Never give the arm the port that carries the default route.** The arm profile is static
+  and `never-default`; applying it to the live LAN port takes the box off the network, and
+  these boxes have no wifi to fall back to (tailscale rides the same underlay, so that is
+  gone too). `pick-nics.sh` refuses this outright and only yields to `--force`. The old
+  "first PCIe NIC wins" rule walked straight into it on a two-port box.
 - **The arm controller is `192.168.1.212`.** The host must be a *different* address on that
   subnet (`192.168.1.150`). Setting the host to `.212` fails duplicate-address detection
   every time the cable actually reaches the arm.
@@ -79,5 +95,10 @@ when a script needs one. Do not share a long-lived organization_owner key across
 
 ## Verify, then apply
 
-Every script dry-runs by default and takes `--apply`. Run `inspect.sh` first and read what
-it says; several of the gotchas above show up there before they cost anyone an hour.
+The python scripts dry-run by default and take `--apply`. The two `sudo` shell scripts are
+the exception — they apply when run, because they are the fast path. `setup-network.sh`
+takes `--dry-run` to print its plan instead, which is worth using on any box whose LAN port
+you are about to touch.
+
+Run `inspect.sh` first and read what it says; several of the gotchas above show up there
+before they cost anyone an hour.

@@ -7,7 +7,9 @@ hostnamectl 2>/dev/null | grep -E "Static hostname|Hardware Model|Operating Syst
 
 echo
 echo "=== NICs (by capability, never by name) ==="
-ARM_NIC=""; LAN_NIC=""
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$here/lib/pick-nics.sh"
+nic_ok=0; pick_nics && nic_ok=1
 for d in /sys/class/net/*; do
   i=$(basename "$d"); [[ "$i" == lo || "$i" == wl* ]] && continue
   bus=$(ethtool -i "$i" 2>/dev/null | awk -F': ' '/^bus-info/{print $2}')
@@ -15,13 +17,24 @@ for d in /sys/class/net/*; do
   mac=$(cat "$d/address" 2>/dev/null)
   car=$(cat "$d/carrier" 2>/dev/null || echo 0)
   case "$bus" in
-    0000:*) role="ARM  (onboard PCIe)"; [[ -z "$ARM_NIC" ]] && ARM_NIC="$i" ;;
-    usb-*)  role="LAN  (USB)";          [[ -z "$LAN_NIC" ]] && LAN_NIC="$i" ;;
-    *)      role="?" ;;
+    0000:*) kind="onboard PCIe" ;;
+    usb-*)  kind="USB" ;;
+    *)      kind="virtual" ;;
   esac
-  printf "  %-18s %-20s driver=%-10s mac=%s carrier=%s\n" "$i" "$role" "$drv" "$mac" "$car"
+  role="-"
+  [[ "$i" == "${ARM_NIC:-}" ]] && role="ARM"
+  [[ "$i" == "${LAN_NIC:-}" ]] && role="LAN"
+  [[ "$i" == "${DEFAULT_NIC:-}" ]] && role="$role (default route)"
+  printf "  %-18s %-22s %-14s driver=%-10s mac=%s carrier=%s\n" \
+    "$i" "$role" "$kind" "$drv" "$mac" "$car"
 done
-echo "  -> arm NIC: ${ARM_NIC:-NONE}   lan NIC: ${LAN_NIC:-NONE}"
+if [[ $nic_ok -eq 1 ]]; then
+  echo "  -> arm NIC: $ARM_NIC   lan NIC: $LAN_NIC"
+  echo "     $NIC_WHY"
+else
+  echo "  -> CANNOT CHOOSE PORTS:"
+  echo "     $NIC_WHY"
+fi
 
 echo
 echo "=== arm controller reachable? ==="

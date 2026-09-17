@@ -3,6 +3,10 @@
 #
 #   sudo bash setup.sh armfarm4 --wall right --arm xarm6-gripper2
 #
+# Works on both fleet box shapes - one onboard NIC plus a USB adapter, or two onboard
+# ethernet ports. If the ports cannot be told apart it stops and tells you to add
+# --arm-nic <iface> / --lan-nic <iface> rather than guessing.
+#
 # Asks for your password once, then does everything: hostname/mDNS/ssh,
 # networking, camera serial detection, Viam registration and fragments.
 #
@@ -15,12 +19,17 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$here"
 
 name="${1:-}"; shift || true
-wall=""; arm=""; cam=""
+wall=""; arm=""; cam=""; net_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --wall) wall="$2"; shift 2 ;;
     --arm)  arm="$2";  shift 2 ;;
     --cam-serial) cam="$2"; shift 2 ;;
+    # Passed through to setup-network.sh. Only needed when this box's ports cannot be
+    # told apart automatically - it says so and names the flag if that happens.
+    --arm-nic) net_args+=(--arm-nic "$2"); shift 2 ;;
+    --lan-nic) net_args+=(--lan-nic "$2"); shift 2 ;;
+    --force-nic) net_args+=(--force); shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -46,7 +55,7 @@ step "1/4  hostname, mDNS, ssh"
 bash scripts/setup-host.sh "$name"
 
 step "2/4  networking"
-bash scripts/setup-network.sh
+bash scripts/setup-network.sh ${net_args[@]+"${net_args[@]}"}
 
 step "3/4  camera serial"
 if [[ -z "$cam" ]]; then
