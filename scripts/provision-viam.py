@@ -90,6 +90,10 @@ async def main():
                    choices=["xarm6-original", "xarm6-gripper2",
                             "xarm850-original", "xarm850-gripper2"])
     p.add_argument("--apply", action="store_true")
+    p.add_argument("--config-only", action="store_true",
+                   help="update the part config and stop: no key minted, no viam.json. "
+                        "This is the fragment-swap path - the agent is already pointed "
+                        "at this machine, so only the fragment list needs to change")
     p.add_argument("--install-agent", action="store_true",
                    help="fresh box: run Viam's installer (needs sudo -E)")
     p.add_argument("--write-config", action="store_true",
@@ -108,6 +112,9 @@ async def main():
                 f"(host is {host_if.ip})")
     if arm_ip == host_if.ip:
         p.error(f"--arm-ip {arm_ip} collides with the host address {host_if.ip}")
+
+    if args.config_only and (args.install_agent or args.write_config):
+        p.error("--config-only cannot be combined with --install-agent/--write-config")
 
     cfg = build_part_config(args)
     have_agent = agent_installed()
@@ -154,16 +161,23 @@ async def main():
         part_id = part.proto.id
         print(f"  main part: {part_id}")
 
+        await app.update_robot_part(robot_part_id=part_id, name=part.proto.name,
+                                    robot_config=cfg)
+        print("  part config applied (arm + obstacles fragments)")
+
+        # Swapping a fragment needs nothing else - the agent is already registered
+        # against this machine. Minting a key here would leave a fresh credential in
+        # the org on every re-apply, for nothing.
+        if args.config_only:
+            print("  --config-only: no key minted, /etc/viam.json untouched")
+            return
+
         new_key, new_kid = await app.create_key(
             org_id=FLEET["org"]["id"],
             authorizations=[APIKeyAuthorization(
                 role="owner", resource_type="robot", resource_id=robot_id)],
             name=f"{args.name}-agent")
         print(f"  minted machine key: {new_kid[:8]}… (value hidden)")
-
-        await app.update_robot_part(robot_part_id=part_id, name=part.proto.name,
-                                    robot_config=cfg)
-        print("  part config applied (arm + obstacles fragments)")
 
         if args.install_agent:
             print("  installing viam-agent…")

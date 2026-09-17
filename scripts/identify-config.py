@@ -18,7 +18,7 @@ Get the arm's live pose first (GetEndPosition on the arm) and pass it in:
 
 Then ask the person which of the two printed positions the camera is actually at.
 """
-import argparse, math
+import argparse, math, re
 
 # cam translation in the arm-flange frame, per mounting
 CAM_T = {
@@ -49,11 +49,28 @@ def ov_to_R(ox, oy, oz, th_deg):
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--pose", nargs=7, type=float, required=True,
-                   metavar=("X", "Y", "Z", "OX", "OY", "OZ", "THETA"),
-                   help="arm GetEndPosition: position mm, orientation vector, theta deg")
+    # GetEndPosition routinely returns components like -2.7e-20. argparse only treats a
+    # leading-dash token as a number if it matches its own matcher, which has no
+    # exponent form - so scientific notation was parsed as an option name and the call
+    # failed with "expected 7 arguments". Widen it to accept exponents.
+    p._negative_number_matcher = re.compile(
+        r"^-(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$")
+    p.add_argument("--pose", nargs="+", required=True,
+                   metavar=("X", "Y Z OX OY OZ THETA"),
+                   help="arm GetEndPosition: position mm, orientation vector, theta deg. "
+                        "Seven numbers, or one quoted/comma-separated string.")
     a = p.parse_args()
-    x, y, z, ox, oy, oz, th = a.pose
+    # Accept "--pose 1 2 3 ..." and "--pose '1 2 3 ...'" and commas, so a pose pasted
+    # straight out of the app or a JSON response works without reformatting.
+    vals = []
+    for tok in a.pose:
+        vals.extend(t for t in re.split(r"[,\s]+", tok.strip()) if t)
+    if len(vals) != 7:
+        p.error(f"--pose needs 7 numbers (x y z ox oy oz theta), got {len(vals)}")
+    try:
+        x, y, z, ox, oy, oz, th = (float(v) for v in vals)
+    except ValueError as e:
+        p.error(f"--pose values must all be numbers: {e}")
     R = ov_to_R(ox, oy, oz, th)
 
     print(f"flange at ({x:.1f}, {y:.1f}, {z:.1f}), tool axis "
