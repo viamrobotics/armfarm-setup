@@ -9,12 +9,12 @@
   "location": {
     "_comment": "Filled in by scripts/create-venue.py. Empty id means the location does not exist yet.",
     "name": "Oct SF Hackathon",
-    "id": ""
+    "id": "ty1cywh7tq"
   },
   "obstacles_fragment": {
     "_comment": "Table + ceiling only, no walls. Source: hackathon/fragments/hackathon-workcell-table-ceiling.json. Filled in by create-venue.py.",
     "name": "hackathon-workcell-table-ceiling",
-    "id": ""
+    "id": "aacb5963-53c1-4285-993a-165868c43baa"
   },
   "machine_prefix": "sfhack",
   "_machine_prefix": "Machines and hostnames are <prefix><station number>: sfhack1, sfhack2, ... One per compute box.",
@@ -30,13 +30,25 @@
   },
   "workcell": {
     "_comment": "Box CENTERS, not faces. face = center +/- size/2. Table 200 thick -> top at z=-23. Ceiling 100 thick -> underside at z=1000. Same values as HQ; override per station with --table-z if a table differs.",
-    "table-translation": { "x": 0, "y": 0, "z": -123 },
-    "ceiling-translation": { "x": 0, "y": 0, "z": 1050 }
+    "table-translation": {
+      "x": 0,
+      "y": 0,
+      "z": -123
+    },
+    "ceiling-translation": {
+      "x": 0,
+      "y": 0,
+      "z": 1050
+    }
   },
   "robot_fragment_vars": {
     "arm-name": "arm",
     "base-axis-rotation-degrees": 0,
-    "translation": { "x": 0, "y": 0, "z": 0 }
+    "translation": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    }
   },
   "camera": {
     "_comment": "Empty serial => the realsense module uses the first camera it finds (per module README). Every box has exactly one RealSense, so no serial detection is needed. verify-cell.py prints the serial the module actually picked if you want to pin it later.",
