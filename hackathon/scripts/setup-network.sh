@@ -5,12 +5,11 @@
 # the HQ flow can change without touching this one.
 #
 #   sudo bash setup-network.sh                       # apply
-#   sudo bash setup-network.sh --dry-run             # print the plan, change nothing
+#        bash setup-network.sh --dry-run             # print the plan, no root needed
 #   sudo bash setup-network.sh --arm-ip 192.168.1.233
 #   sudo bash setup-network.sh --arm-nic enp87s0 --lan-nic enp86s0
 #   sudo bash setup-network.sh --lan-nic enp86s0 --force
 set -euo pipefail
-[[ $EUID -eq 0 ]] || { echo "run with sudo"; exit 1; }
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
@@ -29,6 +28,14 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+# Root is needed to APPLY. --dry-run only reads (nmcli show, ip, sysfs), so anyone may
+# preview the plan. The check sits after parsing for exactly that reason - when it ran
+# first, you could not even see the plan for a box without becoming root.
+if [[ $DRY_RUN -eq 0 && $EUID -ne 0 ]]; then
+  echo "run with sudo (or --dry-run to preview without changing anything)" >&2
+  exit 1
+fi
 
 vj() { python3 -c 'import json,sys;d=json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("."): d=d[k]
