@@ -26,8 +26,20 @@ if [[ -z "$nic" ]]; then
   echo "the host does not have $host_ip on any interface - run setup-network.sh first" >&2
   exit 1
 fi
-if [[ "$(cat /sys/class/net/$nic/carrier 2>/dev/null)" != "1" ]]; then
-  echo "no carrier on $nic - is the arm controller cabled and powered?" >&2
+# The link negotiates for a second or two after the cable goes in and reads 0 in the
+# gap. Seen at the Oct SF event: carrier 1, this check said 0, carrier 1 again moments
+# later - which sends the operator back to a cable that was never the problem. Wait it
+# out instead of failing on the first read.
+carrier() { cat "/sys/class/net/$nic/carrier" 2>/dev/null; }
+if [[ "$(carrier)" != "1" ]]; then
+  echo "waiting up to 10s for the link on $nic to come up ..." >&2
+  for _ in $(seq 1 20); do
+    sleep 0.5
+    [[ "$(carrier)" == "1" ]] && break
+  done
+fi
+if [[ "$(carrier)" != "1" ]]; then
+  echo "no carrier on $nic after 10s - is the arm controller cabled and powered?" >&2
   exit 1
 fi
 
