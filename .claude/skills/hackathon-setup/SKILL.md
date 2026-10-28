@@ -1,6 +1,6 @@
 ---
 name: hackathon-setup
-description: Set up an off-site hackathon work cell on a compute box - assess what the box needs, bootstrap it at the console (packages, ssh, arm link, venue LAN, wifi failover), register a fresh machine in the event's Viam location with the arm and table-plus-ceiling obstacle fragments, and verify the cell including the camera mounting. Use for any hackathon away from Viam HQ, when the user mentions a hackathon venue, "Oct SF Hackathon", sfhackN, or setting up cells off-site. Not for the HQ arm farm - that is /armfarm-setup.
+description: Set up an off-site hackathon work cell on a compute box - assess what the box needs, bootstrap it at the console (packages, ssh, arm link, venue LAN; wired-only, no wifi), register a fresh machine in the event's Viam location with the arm and table-plus-ceiling obstacle fragments, and verify the cell including the camera mounting. Use for any hackathon away from Viam HQ, when the user mentions a hackathon venue, "Oct SF Hackathon", sfhackN, or setting up cells off-site. Not for the HQ arm farm - that is /armfarm-setup.
 ---
 
 # Set up a hackathon work cell
@@ -20,16 +20,28 @@ confirmation. Python scripts dry-run by default and take `--apply`.
 
 ## Where you run
 
-**You run on the operator's laptop.** The box is reached over ssh. Three facts shape
-everything below:
+There are **two placements**, and they change every command you print. Work out which you
+are in before printing anything - `hostname`, `SSH_CONNECTION` and `loginctl list-sessions`
+settle it.
 
-- **You cannot answer a password prompt.** Not sudo, not ssh, not wifi. Every root step on
-  a box is one command the human runs, built so it asks once. Print the command with
-  absolute paths and let them run it; the human is often in another terminal.
-- The first steps on a box need **a monitor and keyboard at the box** (ssh is not on yet).
-  The human runs `console-bootstrap.sh` there. After that everything is over ssh.
-- The repo must be **on the box** for the box-side scripts. Copy it with rsync (below)
-  before every box-side step; it is cheap and avoids stale scripts.
+**A. On the operator's laptop.** The box is reached over ssh. The repo must be copied to it
+with rsync before every box-side step (cheap, and it avoids stale scripts), and the first
+steps need a monitor and keyboard at the box because ssh is not on yet.
+
+**B. On the box itself**, at its monitor. Common on a borrowed arm farm box, where ssh and
+the tooling are already present. Then there is no ssh and no rsync: every path is local,
+the `scp` + `ssh -t` pairs in steps 2 and 6 collapse to a single local command, and the
+"laptop-side" scripts (steps 0, 1, 5, 7) simply run there.
+
+Either way, one fact dominates:
+
+- **You cannot answer a password prompt.** Not sudo, not ssh. Every root step is one
+  command the human runs, built so it asks once. Print it with absolute paths and let them
+  run it. It needs a **real terminal**: a `!`-prefixed or otherwise non-interactive shell
+  has no tty and sudo fails with *"a terminal is required to read the password"*.
+- **Only two steps need root: 3 and 6.** Everything else is yours to run, including all
+  the cloud work. If you are about to ask the human for a third thing, you have probably
+  mis-split the work - check whether the script actually needs root, or only assumes it.
 
 ## 0. Laptop tooling - once per operator
 
@@ -52,6 +64,12 @@ Creates the Viam location and the table-plus-ceiling obstacles fragment if the v
 has no ids for them, and writes the ids back. **Commit the venue file** afterwards so the
 team gets the ids. For a new event, copy `hackathon/venues/oct-sf-hackathon.json`, change
 `slug`, `event`, `location.name`, `machine_prefix`, blank both `id` fields, and run this.
+
+An empty id in the venue file does **not** mean the thing is missing - someone may have
+made it in the UI, or applied from another laptop. Both the dry run and the apply look it
+up by name and say `reuse <id>` when it is already there, so read the plan rather than
+assuming an empty id means "create". The dry run connects read-only to do this, so it needs
+the org key too; it still writes nothing.
 
 ## 2. Per box: get the repo onto it and assess
 
@@ -81,7 +99,7 @@ Have the **switch cable plugged in first** - on a two-port box the wired default
 what tells the LAN port from the arm port. Then the human runs, on the box:
 
 ```
-sudo bash /home/viam/armfarm-setup/hackathon/scripts/console-bootstrap.sh <name> --wifi "<SSID>"
+sudo bash /home/viam/armfarm-setup/hackathon/scripts/console-bootstrap.sh <name>
 ```
 
 (If the repo is not on the box yet because ssh is off: a USB stick, or
@@ -89,10 +107,19 @@ sudo bash /home/viam/armfarm-setup/hackathon/scripts/console-bootstrap.sh <name>
 
 It installs missing packages, sets the hostname and mDNS, enables ssh, configures the arm
 link and venue LAN (`hackathon/scripts/setup-network.sh`, which refuses to put the arm on
-the port carrying the default route), joins wifi as a higher-metric failover route, and
-prints the IPs plus a **SUBNET CLASH** warning if anything else is on 192.168.1.x.
-It prompts for the wifi password; the human types it. Captive-portal wifi will not work on
-a headless box - use a network with a plain password.
+the port carrying the default route), and prints the IPs plus a **SUBNET CLASH** warning if
+anything else is on 192.168.1.x.
+
+**These boxes are wired-only. Do not configure wifi.** No flag is needed: the venue LAN is
+the single default route. `--wifi "<SSID>"` still exists for a box that genuinely needs a
+failover route and will prompt for the password, but it is not the default and should not
+be offered - a venue AP handing out 192.168.1.x collides with the arm subnet and looks
+exactly like a dead arm. On a box that has been on wifi before, `assess.sh` flags the live
+connection; turn it off with `nmcli radio wifi off`.
+
+You can preview exactly what it will do to the network **without root**:
+`bash hackathon/scripts/setup-network.sh --dry-run`. Worth doing on any box whose LAN port
+you are about to touch.
 
 If it stops because it cannot tell the ports apart, it names the flags: re-run with
 `--arm-nic <iface> --lan-nic <iface>`. `assess.sh` lists the ports with MACs and carrier.
@@ -102,15 +129,27 @@ Names are `<machine_prefix><station>`: `sfhack1`, `sfhack2`, ...
 ## 4. Per box: the arm's address
 
 Every arm at the event is a different arm, and controller addresses differ per arm.
-`192.168.1.212` is only uFactory's factory default. With the arm cabled and powered:
+`192.168.1.212` is only uFactory's factory default.
+
+**Ask the person first.** They usually know it, and the arm's own display and UFactory
+Studio both show it. One question costs seconds; the sweep pings 254 addresses. Do not
+reach for the script before asking.
+
+Only if nobody knows, sweep for it - with the arm cabled and powered:
 
 ```
-ssh viam@<name>.local bash ~/armfarm-setup/hackathon/scripts/find-arm-ip.sh
+bash ~/armfarm-setup/hackathon/scripts/find-arm-ip.sh        # on the box
 ```
 
-It sweeps the arm subnet and marks hosts answering on Modbus 502 / Studio 18333 as the
-controller. If nothing answers, the output lists what to check. Also ask: the arm's own
-display and UFactory Studio show the address.
+It marks hosts answering on Modbus 502 / Studio 18333 as the controller. It waits up to 10s
+for the link first: a freshly plugged cable reads `carrier 0` for a second or two while it
+negotiates, and failing on that first read sends people back to a cable that was never the
+problem. If nothing answers, the output lists what to check.
+
+However you get the address, **confirm it answers before provisioning** - `ping` plus
+tcp/502 and tcp/18333 is enough. A wrong `--arm-ip` provisions cleanly and then sits at
+`STATE_UNHEALTHY` with a connection timeout, which reads as a broken arm rather than a
+wrong address.
 
 ## 5. Per box: the two per-station facts, then register
 
@@ -137,7 +176,15 @@ It creates or reuses the machine, applies the arm fragment and the venue obstacl
 fragment, mints a machine key and writes `hackathon/out/viam.json.<name>`, then prints the
 two commands for step 6.
 
-## 6. Per box: install credentials (the human, one sudo over ssh)
+## 6. Per box: install credentials (the human, one sudo)
+
+On the box (placement B) there is nothing to copy - it is one local command:
+
+```
+sudo bash <repo>/hackathon/scripts/install-config.sh <repo>/hackathon/out/viam.json.<name>
+```
+
+From a laptop (placement A), send it over first:
 
 ```
 scp hackathon/out/viam.json.<name> viam@<name>.local:~/
