@@ -2,8 +2,13 @@
 """One-time setup for an event: the Viam location and the obstacles fragment.
 
 Reads hackathon/venues/<slug>.json. For each of location and obstacles_fragment, if
-the id is empty it creates the thing and writes the id back into the venue file.
-If the id is present it just confirms the thing exists. Safe to re-run.
+the id is empty it looks the thing up BY NAME and reuses it if it is already there
+(someone may have made it in the UI, or on another laptop), creating it only when
+nothing matches, then writes the id back into the venue file. If the id is present
+it just confirms the thing exists. Safe to re-run.
+
+The dry run connects too - read-only - so that it reports "reuse" rather than
+guessing "create" from an empty id. It therefore needs credentials as well.
 
   create-venue.py --venue oct-sf-hackathon             # dry run: says what it would do
   create-venue.py --venue oct-sf-hackathon --apply
@@ -59,18 +64,6 @@ async def main():
     print(f"              source {frag_src.relative_to(ROOT)}: "
           f"{[c['name'] for c in frag_cfg['components']]}")
 
-    plan = []
-    if not venue["location"]["id"]:
-        plan.append("create location")
-    if not venue["obstacles_fragment"]["id"]:
-        plan.append("create obstacles fragment from local JSON")
-    elif args.push_fragment:
-        plan.append("push local JSON into the existing obstacles fragment")
-    print(f"  plan      : {', '.join(plan) if plan else 'nothing to do'}")
-    if not args.apply:
-        print("\n[dry run] re-run with --apply")
-        return
-
     kid, key = os.environ.get("VIAM_API_KEY_ID"), os.environ.get("VIAM_API_KEY")
     if not (kid and key):
         sys.exit("set VIAM_API_KEY_ID / VIAM_API_KEY, or run hackathon/scripts/bootstrap-laptop.sh")
@@ -84,45 +77,76 @@ async def main():
         app = client.app_client
         org_id = venue["org"]["id"]
 
-        # ---------------------------------------------------------- location
+        # ------------------------------------------------- what is already there
+        # Resolved before the plan is printed, and before --apply branches, so the
+        # dry run and the apply cannot disagree. An empty id in the venue file does
+        # NOT mean "does not exist" - someone may have made it in the UI, or on
+        # another operator's laptop. Always look it up by name too.
         if venue["location"]["id"]:
-            loc = await app.get_location(location_id=venue["location"]["id"])
+            loc, loc_action = await app.get_location(
+                location_id=venue["location"]["id"]), "exists"
+        else:
+            match = [l for l in await app.list_locations(org_id=org_id)
+                     if l.name == venue["location"]["name"]]
+            loc, loc_action = (match[0], "reuse") if match else (None, "create")
+
+        fname = venue["obstacles_fragment"]["name"]
+        if venue["obstacles_fragment"]["id"]:
+            fr, frag_action = await app.get_fragment(
+                fragment_id=venue["obstacles_fragment"]["id"]), "exists"
+        else:
+            match = [f for f in await app.list_fragments(org_id=org_id, show_public=False)
+                     if f.name == fname]
+            fr, frag_action = (match[0], "reuse") if match else (None, "create")
+
+        # ---------------------------------------------------------------- plan
+        plan = []
+        if loc_action == "create":
+            plan.append(f"create location {venue['location']['name']!r}")
+        elif loc_action == "reuse":
+            plan.append(f"reuse location {loc.id} (already exists, matched by name)")
+        if frag_action == "create":
+            plan.append(f"create fragment {fname!r} from local JSON")
+        elif frag_action == "reuse":
+            plan.append(f"reuse fragment {fr.id} (already exists, matched by name)")
+        if args.push_fragment and frag_action in ("exists", "reuse"):
+            plan.append("push local JSON into that fragment (OVERWRITES it)")
+        if loc_action in ("create", "reuse") or frag_action in ("create", "reuse"):
+            plan.append(f"write ids back to {venue_path.name}")
+        print(f"  plan      : {', '.join(plan) if plan else 'nothing to do'}")
+
+        if not args.apply:
+            print("\n[dry run] nothing was changed. re-run with --apply")
+            return
+
+        # --------------------------------------------------------------- apply
+        if loc_action == "exists":
             print(f"\n  location exists: {loc.name} ({loc.id})")
         else:
-            # Reuse by name if someone already made it in the UI.
-            existing = [l for l in await app.list_locations(org_id=org_id)
-                        if l.name == venue["location"]["name"]]
-            if existing:
-                loc = existing[0]
-                print(f"\n  location already exists by name, reusing: {loc.id}")
-            else:
+            if loc_action == "create":
                 loc = await app.create_location(org_id=org_id, name=venue["location"]["name"])
                 print(f"\n  created location: {loc.name} ({loc.id})")
+            else:
+                print(f"\n  location already exists by name, reusing: {loc.id}")
             venue["location"]["id"] = loc.id
             changed = True
 
-        # ---------------------------------------------------------- fragment
-        fname = venue["obstacles_fragment"]["name"]
-        if venue["obstacles_fragment"]["id"]:
-            fr = await app.get_fragment(fragment_id=venue["obstacles_fragment"]["id"])
+        if frag_action == "exists":
             print(f"  fragment exists: {fr.name} ({fr.id})")
-            if args.push_fragment:
-                await app.update_fragment(fragment_id=fr.id, name=fr.name, config=frag_cfg)
-                print(f"  pushed {frag_src.name} into {fr.name}")
         else:
-            existing = [f for f in await app.list_fragments(org_id=org_id, show_public=False)
-                        if f.name == fname]
-            if existing:
-                fr = existing[0]
-                print(f"  fragment already exists by name, reusing: {fr.id}")
-                if args.push_fragment:
-                    await app.update_fragment(fragment_id=fr.id, name=fr.name, config=frag_cfg)
-                    print(f"  pushed {frag_src.name} into {fr.name}")
-            else:
+            if frag_action == "create":
                 fr = await app.create_fragment(org_id=org_id, name=fname, config=frag_cfg)
                 print(f"  created fragment: {fr.name} ({fr.id})")
+            else:
+                print(f"  fragment already exists by name, reusing: {fr.id}")
             venue["obstacles_fragment"]["id"] = fr.id
             changed = True
+
+        # A freshly created fragment already holds the local JSON; only an existing
+        # one needs pushing, and only when asked.
+        if args.push_fragment and frag_action in ("exists", "reuse"):
+            await app.update_fragment(fragment_id=fr.id, name=fr.name, config=frag_cfg)
+            print(f"  pushed {frag_src.name} into {fr.name}")
     finally:
         client.close()
 
