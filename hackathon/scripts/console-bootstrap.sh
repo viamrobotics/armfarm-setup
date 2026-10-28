@@ -2,13 +2,18 @@
 # Run AT THE MONITOR on a box, as root. Everything that needs root except installing
 # the Viam credentials, in one go with one password prompt:
 #
-#   sudo bash /home/viam/armfarm-setup/hackathon/scripts/console-bootstrap.sh sfhack3 --wifi "VenueSSID"
+#   sudo bash /home/viam/armfarm-setup/hackathon/scripts/console-bootstrap.sh sfhack3
 #
 #   1. packages the rest of the flow needs (curl, openssh-server, avahi, ethtool)
 #   2. hostname + mDNS + ssh
 #   3. networking: arm link on one port, venue LAN on the other  (setup-network.sh)
-#   4. wifi as a second default route with a higher metric     (--wifi SSID; prompts for the password)
-#   5. prints what the laptop needs: the name, the IPs, and the next command
+#   4. wifi - SKIPPED by default; these boxes are wired-only
+#   5. prints what comes next: the name, the IPs, and the install-config command
+#
+# WIRED-ONLY BY DEFAULT. Pass no wifi flag and none is configured: the venue LAN is the
+# single default route. --wifi <SSID> remains for a box that genuinely needs a failover
+# route, and prompts for the password. Think before reaching for it - a venue AP handing
+# out 192.168.1.x collides with the arm subnet, and that looks exactly like a dead arm.
 #
 # Options passed through to setup-network.sh when the ports cannot be told apart:
 #   --arm-nic <iface> --lan-nic <iface> --force-nic
@@ -37,11 +42,13 @@ done
 die() { echo; echo "FAILED: $*" >&2; exit 1; }
 step() { echo; echo "=============== $* ==============="; }
 
-[[ -n "$name" ]] || die "usage: sudo bash console-bootstrap.sh <machine-name> --wifi <SSID>"
+[[ -n "$name" ]] || die "usage: sudo bash console-bootstrap.sh <machine-name> [--wifi <SSID>]"
 [[ "$name" =~ ^[a-z][a-z0-9-]*$ ]] || die "name must be lowercase letters, digits, hyphens: $name"
 [[ $EUID -eq 0 ]] || die "run with sudo"
 [[ -f "$venue_file" ]] || die "no venue file at $venue_file"
-[[ -n "$ssid" || $no_wifi -eq 1 ]] || die "--wifi <SSID> is required (or --no-wifi to skip it on purpose)"
+# No wifi flag at all means wired-only, which is the normal case. --no-wifi is still
+# accepted so existing commands and notes keep working, but it is now the default.
+: "${no_wifi:=0}"
 
 wifi_metric="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["network"]["wifi_route_metric"])' "$venue_file")"
 wifi_profile="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["network"]["wifi_profile_name"])' "$venue_file")"
@@ -111,7 +118,7 @@ if [[ -n "$ssid" ]]; then
     echo "    sudo nmcli dev wifi connect '$ssid' password '<pw>' name '$wifi_profile'"
   fi
 else
-  echo "  skipped (--no-wifi)"
+  echo "  skipped - wired-only (pass --wifi <SSID> only if this box needs a failover route)"
 fi
 unset wifi_pw
 
@@ -134,6 +141,9 @@ while read -r ifc _ addr _; do
 done < <(ip -br -4 addr show 2>/dev/null)
 
 echo
-echo "Next, from the laptop:"
-echo "  ssh-copy-id viam@$name.local        # type this box's password once"
-echo "  then /hackathon-setup continues over ssh"
+echo "Next:"
+echo "  working ON this box (monitor/keyboard here)? the remaining steps are local -"
+echo "    provision-viam.py --venue <slug> --name $name --arm <cfg> --arm-ip <ip> --apply"
+echo "    sudo bash $here/install-config.sh <repo>/hackathon/out/viam.json.$name"
+echo "  driving it from a laptop? get a key on first, then continue over ssh -"
+echo "    ssh-copy-id viam@$name.local      # type this box's password once"

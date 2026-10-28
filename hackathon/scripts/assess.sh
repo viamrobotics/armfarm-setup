@@ -72,12 +72,22 @@ have_lan_profile=0; nmcli -t -f NAME connection show 2>/dev/null | grep -qx "$la
 
 echo
 echo "=== wifi ==="
+# These boxes are wired-only by policy: the venue LAN is the single route and wifi is
+# never configured. So an unconnected radio is the EXPECTED state and is never a NEEDS
+# item - reporting it as one made every finished box look unfinished. A box that IS on
+# wifi is the surprise worth flagging: it is a second default route, and a venue AP
+# handing out 192.168.1.x collides with the arm subnet.
 wdev="$(nmcli -t -f DEVICE,TYPE dev 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
-if [[ -z "$wdev" ]]; then echo "  no wifi device"; needs+=("wifi hardware missing - no failover route")
+if [[ -z "$wdev" ]]; then
+  echo "  no wifi device (fine - these boxes are wired-only)"
 else
   ssid="$(nmcli -t -f ACTIVE,SSID dev wifi 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}')"
-  if [[ -n "$ssid" ]]; then echo "  $wdev connected to '$ssid'"
-  else echo "  $wdev not connected"; needs+=("console-bootstrap --wifi <SSID> (wifi failover)"); fi
+  if [[ -n "$ssid" ]]; then
+    echo "  *** $wdev is connected to '$ssid' - these boxes are meant to be wired-only ***"
+    needs+=("disconnect wifi on $wdev (wired-only; a venue AP can hand out the arm subnet)")
+  else
+    echo "  $wdev not connected (expected - wired-only)"
+  fi
 fi
 
 echo
