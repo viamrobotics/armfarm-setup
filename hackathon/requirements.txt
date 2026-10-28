@@ -1,0 +1,3 @@
+# Laptop-side only. The cloud work (create location, machines, fragments, mint keys)
+# runs on the operator's laptop; nothing python runs on the box.
+viam-sdk>=0.80.0

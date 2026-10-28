@@ -13,6 +13,10 @@ claude
 Then `/armfarm-setup`. The skill walks the full provisioning flow; `CLAUDE.md` is loaded
 automatically and carries the conventions and the known traps.
 
+For hackathons away from HQ (different location, no walls, wifi failover) use
+[`hackathon/`](hackathon/README.md) and `/hackathon-setup` instead. It shares the port
+logic and the mounting test with this flow but never changes it.
+
 ## Use it by hand
 
 ```

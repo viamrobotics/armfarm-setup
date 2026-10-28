@@ -1,0 +1,45 @@
+{
+  "slug": "oct-sf-hackathon",
+  "event": "Oct SF Hackathon",
+  "venue": "Robotics Center of Silicon Valley, San Francisco",
+  "org": {
+    "name": "hackathons",
+    "id": "6d6c7293-bc67-43e4-9c8b-31c76aac27d3"
+  },
+  "location": {
+    "_comment": "Filled in by scripts/create-venue.py. Empty id means the location does not exist yet.",
+    "name": "Oct SF Hackathon",
+    "id": ""
+  },
+  "obstacles_fragment": {
+    "_comment": "Table + ceiling only, no walls. Source: hackathon/fragments/hackathon-workcell-table-ceiling.json. Filled in by create-venue.py.",
+    "name": "hackathon-workcell-table-ceiling",
+    "id": ""
+  },
+  "machine_prefix": "sfhack",
+  "_machine_prefix": "Machines and hostnames are <prefix><station number>: sfhack1, sfhack2, ... One per compute box.",
+  "network": {
+    "_comment": "Arm link is a static /24 on its own port, same as HQ. The venue LAN (switch) is DHCP on the other port with a low route metric so it is the default route. Wifi is a second default route with a higher metric and takes over only when the wire drops. Neither the LAN nor the wifi may hand out 192.168.1.x or arm traffic routes the wrong way.",
+    "arm_subnet": "192.168.1.0/24",
+    "arm_host_ip_cidr": "192.168.1.150/24",
+    "arm_default_controller_ip": "192.168.1.212",
+    "lan_route_metric": 100,
+    "wifi_route_metric": 600,
+    "wifi_profile_name": "venue-wifi",
+    "lan_profile_name": "venue-lan"
+  },
+  "workcell": {
+    "_comment": "Box CENTERS, not faces. face = center +/- size/2. Table 200 thick -> top at z=-23. Ceiling 100 thick -> underside at z=1000. Same values as HQ; override per station with --table-z if a table differs.",
+    "table-translation": { "x": 0, "y": 0, "z": -123 },
+    "ceiling-translation": { "x": 0, "y": 0, "z": 1050 }
+  },
+  "robot_fragment_vars": {
+    "arm-name": "arm",
+    "base-axis-rotation-degrees": 0,
+    "translation": { "x": 0, "y": 0, "z": 0 }
+  },
+  "camera": {
+    "_comment": "Empty serial => the realsense module uses the first camera it finds (per module README). Every box has exactly one RealSense, so no serial detection is needed. verify-cell.py prints the serial the module actually picked if you want to pin it later.",
+    "serial": ""
+  }
+}
