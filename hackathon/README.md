@@ -66,6 +66,7 @@ hackathon/venv/bin/python hackathon/scripts/verify-cell.py --venue oct-sf-hackat
 | [`scripts/create-venue.py`](scripts/create-venue.py) | laptop, once per event: location + obstacles fragment |
 | [`scripts/console-bootstrap.sh`](scripts/console-bootstrap.sh) | box, root, at the monitor: packages, hostname, ssh, no-sleep, arm + LAN network (wifi only with `--wifi`) |
 | [`scripts/no-sleep.sh`](scripts/no-sleep.sh) | box, root: mask suspend, logind ignores lid/idle, GNOME auto-suspend off (called by console-bootstrap; standalone for boxes done earlier) |
+| [`scripts/wifi-off.sh`](scripts/wifi-off.sh) | box, root: radio off and wifi profiles set to not autoconnect; refuses if wifi is the only route |
 | [`scripts/setup-network.sh`](scripts/setup-network.sh) | box, root: arm link + venue LAN profiles (called by console-bootstrap; standalone for re-runs) |
 | [`scripts/assess.sh`](scripts/assess.sh) | box, read-only: what does this box still need |
 | [`scripts/find-arm-ip.sh`](scripts/find-arm-ip.sh) | box, no root: sweep the arm subnet for the controller |

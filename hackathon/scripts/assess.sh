@@ -97,7 +97,7 @@ else
   ssid="$(nmcli -t -f ACTIVE,SSID dev wifi 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}')"
   if [[ -n "$ssid" ]]; then
     echo "  *** $wdev is connected to '$ssid' - these boxes are meant to be wired-only ***"
-    needs+=("disconnect wifi on $wdev (wired-only; a venue AP can hand out the arm subnet)")
+    needs+=("wifi-off.sh (sudo; wired-only - a venue AP can hand out the arm subnet)")
   else
     echo "  $wdev not connected (expected - wired-only)"
   fi
@@ -115,11 +115,20 @@ done
 
 echo
 echo "=== arm ==="
-arm_ip="${1:-$(vj network.arm_default_controller_ip)}"
+# The configured address lives in the machine config in the cloud (fragment variable
+# arm-ip-address), which this box cannot read without root. Pass it in:
+#   assess.sh <arm-ip>
+# Without it, only the factory default is tried, and "does not answer" means nothing.
+arm_ip="${1:-}"
 if ip -4 addr show 2>/dev/null | grep -q "$(vj network.arm_host_ip_cidr | cut -d/ -f1)"; then
   echo "  host has the arm-link address"
+  if [[ -z "$arm_ip" ]]; then
+    arm_ip="$(vj network.arm_default_controller_ip)"
+    echo "  no address given; trying the factory default $arm_ip only. The configured one is"
+    echo "  in the machine config (arm-ip-address) - pass it: assess.sh <arm-ip>"
+  fi
   if ping -c1 -W2 "$arm_ip" >/dev/null 2>&1; then echo "  $arm_ip answers"
-  else echo "  $arm_ip does not answer - run find-arm-ip.sh (controller addresses differ per arm)"; fi
+  else echo "  $arm_ip does not answer - if that is the configured address, check power and cable; else find-arm-ip.sh"; fi
 else
   echo "  arm link not configured yet"
 fi

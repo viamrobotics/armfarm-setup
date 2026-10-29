@@ -127,7 +127,19 @@ the single default route. `--wifi "<SSID>"` still exists for a box that genuinel
 failover route and will prompt for the password, but it is not the default and should not
 be offered - a venue AP handing out 192.168.1.x collides with the arm subnet and looks
 exactly like a dead arm. On a box that has been on wifi before, `assess.sh` flags the live
-connection; turn it off with `nmcli radio wifi off`.
+connection. Turning it off needs root (polkit refuses `nmcli radio` over ssh), so it is one
+sudo command; the script refuses if wifi is the only default route:
+
+```
+ssh -t viam@<name>.local sudo bash ~/armfarm-setup/hackathon/scripts/wifi-off.sh
+```
+
+When a box needs both this and `no-sleep.sh`, chain them under one sudo so the human
+types the password once:
+
+```
+ssh -t viam@<name>.local sudo bash -c 'bash ~viam/armfarm-setup/hackathon/scripts/no-sleep.sh && bash ~viam/armfarm-setup/hackathon/scripts/wifi-off.sh'
+```
 
 You can preview exactly what it will do to the network **without root**:
 `bash hackathon/scripts/setup-network.sh --dry-run`. Worth doing on any box whose LAN port
