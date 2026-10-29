@@ -40,6 +40,19 @@ else
 fi
 
 echo
+echo "=== sleep ==="
+# A box that suspends during the event drops its arm and reads as a network fault.
+sleep_state="$(systemctl is-enabled sleep.target 2>&1 || true)"
+if [[ "$sleep_state" == "masked" ]]; then
+  echo "  sleep.target masked - cannot suspend"
+else
+  echo "  sleep.target is '$sleep_state' - this box CAN suspend"
+  needs+=("no-sleep.sh (mask suspend; console-bootstrap does this too)")
+fi
+[[ -f /etc/systemd/logind.conf.d/90-hackathon-no-sleep.conf ]] \
+  && echo "  logind: lid/idle/sleep keys ignored" || echo "  logind: default handling (no-sleep.sh not run)"
+
+echo
 echo "=== network ports ==="
 if command -v ethtool >/dev/null 2>&1; then
   . "$root/scripts/lib/pick-nics.sh"

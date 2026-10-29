@@ -6,9 +6,10 @@
 #
 #   1. packages the rest of the flow needs (curl, openssh-server, avahi, ethtool)
 #   2. hostname + mDNS + ssh
-#   3. networking: arm link on one port, venue LAN on the other  (setup-network.sh)
-#   4. wifi - SKIPPED by default; these boxes are wired-only
-#   5. prints what comes next: the name, the IPs, and the install-config command
+#   3. no sleep: mask suspend, logind ignores lid/idle, GNOME auto-suspend off (no-sleep.sh)
+#   4. networking: arm link on one port, venue LAN on the other  (setup-network.sh)
+#   5. wifi - SKIPPED by default; these boxes are wired-only
+#   6. prints what comes next: the name, the IPs, and the install-config command
 #
 # WIRED-ONLY BY DEFAULT. Pass no wifi flag and none is configured: the venue LAN is the
 # single default route. --wifi <SSID> remains for a box that genuinely needs a failover
@@ -62,7 +63,7 @@ if [[ -n "$ssid" ]]; then
   [[ -n "$wifi_pw" ]] || die "empty wifi password"
 fi
 
-step "1/5  packages"
+step "1/6  packages"
 need=()
 command -v curl >/dev/null         || need+=(curl)
 command -v ethtool >/dev/null      || need+=(ethtool)
@@ -82,7 +83,7 @@ else
   apt-get install -y -qq "${need[@]}" || die "apt install failed: ${need[*]}. Get the box online and re-run."
 fi
 
-step "2/5  hostname $name, mDNS, ssh"
+step "2/6  hostname $name, mDNS, ssh"
 hostnamectl set-hostname "$name"
 # avahi keeps advertising the OLD name until restarted.
 systemctl enable --now avahi-daemon >/dev/null 2>&1 || true
@@ -94,10 +95,14 @@ if systemctl is-active ufw >/dev/null 2>&1; then
   echo "  ufw: OpenSSH allowed"
 fi
 
-step "3/5  networking (arm link + venue LAN)"
+step "3/6  no sleep"
+# A box that suspends mid-event takes its arm offline and looks like a network fault.
+bash "$here/no-sleep.sh"
+
+step "4/6  networking (arm link + venue LAN)"
 bash "$here/setup-network.sh" --venue-file "$venue_file" ${net_args[@]+"${net_args[@]}"}
 
-step "4/5  wifi"
+step "5/6  wifi"
 if [[ -n "$ssid" ]]; then
   wdev="$(nmcli -t -f DEVICE,TYPE dev 2>/dev/null | awk -F: '$2=="wifi"{print $1; exit}')"
   [[ -n "$wdev" ]] || die "no wifi device found by NetworkManager (nmcli dev)"
@@ -122,8 +127,9 @@ else
 fi
 unset wifi_pw
 
-step "5/5  summary"
+step "6/6  summary"
 echo "  hostname : $name  ->  $name.local"
+echo "  sleep    : $(systemctl is-enabled sleep.target 2>&1)"
 ip -br -4 addr show 2>/dev/null | grep -v '^lo' | sed 's/^/  /'
 echo "  routes:"
 ip -4 route show default | sed 's/^/    /'

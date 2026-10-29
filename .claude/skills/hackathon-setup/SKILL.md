@@ -1,6 +1,6 @@
 ---
 name: hackathon-setup
-description: Set up an off-site hackathon work cell on a compute box - assess what the box needs, bootstrap it at the console (packages, ssh, arm link, venue LAN; wired-only, no wifi), register a fresh machine in the event's Viam location with the arm and table-plus-ceiling obstacle fragments, and verify the cell including the camera mounting. Use for any hackathon away from Viam HQ, when the user mentions a hackathon venue, "Oct SF Hackathon", sfhackN, or setting up cells off-site. Not for the HQ arm farm - that is /armfarm-setup.
+description: Set up an off-site hackathon work cell on a compute box - assess what the box needs, bootstrap it at the console (packages, ssh, no-sleep, arm link, venue LAN; wired-only, no wifi), register a fresh machine in the event's Viam location with the arm and table-plus-ceiling obstacle fragments, and verify the cell including the camera mounting. Use for any hackathon away from Viam HQ, when the user mentions a hackathon venue, "Oct SF Hackathon", sfhackN, or setting up cells off-site. Not for the HQ arm farm - that is /armfarm-setup.
 ---
 
 # Set up a hackathon work cell
@@ -42,6 +42,8 @@ Either way, one fact dominates:
 - **Only two steps need root: 3 and 6.** Everything else is yours to run, including all
   the cloud work. If you are about to ask the human for a third thing, you have probably
   mis-split the work - check whether the script actually needs root, or only assumes it.
+  (The one legitimate extra: `no-sleep.sh` on a box bootstrapped before it existed, see
+  step 3.)
 
 ## 0. Laptop tooling - once per operator
 
@@ -105,10 +107,20 @@ sudo bash /home/viam/armfarm-setup/hackathon/scripts/console-bootstrap.sh <name>
 (If the repo is not on the box yet because ssh is off: a USB stick, or
 `git clone https://github.com/viamrobotics/armfarm-setup` on the box - it is public.)
 
-It installs missing packages, sets the hostname and mDNS, enables ssh, configures the arm
-link and venue LAN (`hackathon/scripts/setup-network.sh`, which refuses to put the arm on
-the port carrying the default route), and prints the IPs plus a **SUBNET CLASH** warning if
-anything else is on 192.168.1.x.
+It installs missing packages, sets the hostname and mDNS, enables ssh, **makes sure the box
+can never sleep** (`hackathon/scripts/no-sleep.sh`: masks the systemd suspend targets, tells
+logind to ignore lid, idle and sleep keys, turns GNOME automatic suspend off), configures the
+arm link and venue LAN (`hackathon/scripts/setup-network.sh`, which refuses to put the arm
+on the port carrying the default route), and prints the IPs plus a **SUBNET CLASH** warning
+if anything else is on 192.168.1.x.
+
+A box that suspends mid-event takes its arm offline and looks like a network fault.
+`assess.sh` reports whether `sleep.target` is masked. On a box bootstrapped before
+`no-sleep.sh` existed, apply just that piece (one sudo, idempotent, no reboot):
+
+```
+ssh -t viam@<name>.local sudo bash ~/armfarm-setup/hackathon/scripts/no-sleep.sh
+```
 
 **These boxes are wired-only. Do not configure wifi.** No flag is needed: the venue LAN is
 the single default route. `--wifi "<SSID>"` still exists for a box that genuinely needs a

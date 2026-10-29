@@ -39,7 +39,7 @@ Per box. Steps marked **box** run on the box; the first one needs a monitor and 
 
 ```
 # box, at the monitor, with the switch cable plugged in:
-sudo bash /home/viam/armfarm-setup/hackathon/scripts/console-bootstrap.sh sfhack3 --wifi "VenueSSID"
+sudo bash /home/viam/armfarm-setup/hackathon/scripts/console-bootstrap.sh sfhack3
 
 # laptop:
 ssh-copy-id viam@sfhack3.local
@@ -64,7 +64,8 @@ hackathon/venv/bin/python hackathon/scripts/verify-cell.py --venue oct-sf-hackat
 | [`fragments/hackathon-workcell-table-ceiling.json`](fragments/hackathon-workcell-table-ceiling.json) | source of truth for the event obstacles fragment |
 | [`scripts/bootstrap-laptop.sh`](scripts/bootstrap-laptop.sh) | laptop: CLI, venv, login, org key |
 | [`scripts/create-venue.py`](scripts/create-venue.py) | laptop, once per event: location + obstacles fragment |
-| [`scripts/console-bootstrap.sh`](scripts/console-bootstrap.sh) | box, root, at the monitor: packages, hostname, ssh, arm + LAN network, wifi |
+| [`scripts/console-bootstrap.sh`](scripts/console-bootstrap.sh) | box, root, at the monitor: packages, hostname, ssh, no-sleep, arm + LAN network (wifi only with `--wifi`) |
+| [`scripts/no-sleep.sh`](scripts/no-sleep.sh) | box, root: mask suspend, logind ignores lid/idle, GNOME auto-suspend off (called by console-bootstrap; standalone for boxes done earlier) |
 | [`scripts/setup-network.sh`](scripts/setup-network.sh) | box, root: arm link + venue LAN profiles (called by console-bootstrap; standalone for re-runs) |
 | [`scripts/assess.sh`](scripts/assess.sh) | box, read-only: what does this box still need |
 | [`scripts/find-arm-ip.sh`](scripts/find-arm-ip.sh) | box, no root: sweep the arm subnet for the controller |
@@ -83,9 +84,14 @@ hackathon/venv/bin/python hackathon/scripts/verify-cell.py --venue oct-sf-hackat
   only; jogging and `MoveToJointPositions` ignore them.
 - **No camera serial.** Empty `serial_number` makes the RealSense module take the first
   camera it finds (module README). One camera per box, so no pyrealsense2 on the box.
-- **Wifi is a failover route**, not the primary. The venue LAN (switch) is DHCP on the
-  second port at route metric 100; wifi is metric 600. Neither may be on 192.168.1.x;
-  `console-bootstrap.sh`, `setup-network.sh` and `assess.sh` all shout if one is.
+- **Wired-only.** The venue LAN (switch) is DHCP on the second port and the single
+  default route. Wifi is not configured; `--wifi <SSID>` exists for a box that genuinely
+  needs a failover route (metric 600), and `assess.sh` flags a box that is on wifi. No
+  interface may be on 192.168.1.x; `console-bootstrap.sh`, `setup-network.sh` and
+  `assess.sh` all shout if one is.
+- **Boxes never sleep.** `no-sleep.sh` masks the systemd suspend targets, makes logind
+  ignore lid, idle and sleep keys, and turns GNOME automatic suspend off. A box that
+  suspends mid-event drops its arm and looks like a network fault.
 - **Network profiles** are `xArm`, `venue-lan`, `venue-wifi`. The HQ `office-lan` profile
   on a borrowed box is deleted.
 
