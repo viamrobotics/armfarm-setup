@@ -32,9 +32,10 @@ HandleSuspendKey=ignore
 HandleHibernateKey=ignore
 IdleAction=ignore
 EOF
-# Restarting logind on current systemd keeps sessions; this is how the drop-in takes
-# effect without a reboot.
-systemctl restart systemd-logind 2>/dev/null || echo "   (logind restart failed; drop-in applies at next boot)"
+# Reload, not restart: restarting logind strips a running Wayland desktop of its 
+# input/display devices ("NotInControl"), freezing the console with no way back short 
+# of a power cycle.
+systemctl reload systemd-logind 2>/dev/null || echo "   (logind restart failed; drop-in applies at next boot)"
 echo "   /etc/systemd/logind.conf.d/90-hackathon-no-sleep.conf"
 
 echo "== 3. GNOME power settings =="
