@@ -56,7 +56,10 @@ ssh -t viam@sfhack3.local sudo bash ~/armfarm-setup/hackathon/scripts/install-co
 hackathon/venv/bin/python hackathon/scripts/verify-cell.py --venue oct-sf-hackathon --name sfhack3 --image
 ```
 
-Finally, once the cells are built, check the whole fleet's camera mounting at once.
+Finally, once the cells are built, work on the whole room at once - reset the machines
+to a known config and check every camera mounting. Full procedure and failure signatures:
+[`docs/fleet-check-runbook.md`](docs/fleet-check-runbook.md).
+
 This MOVES every arm simultaneously, so make sure the cells are clear:
 
 ```
@@ -89,6 +92,8 @@ hackathon/venv/bin/python hackathon/scripts/check-depth-alignment.py --venue oct
 | [`scripts/install-config.sh`](scripts/install-config.sh) | box, root: install credentials, (install viam-agent on a fresh box), restart |
 | [`scripts/verify-cell.py`](scripts/verify-cell.py) | laptop: resource states, camera frame, mounting question |
 | [`scripts/check-depth-alignment.py`](scripts/check-depth-alignment.py) | laptop: moves the whole fleet at once, PASS/FAIL on camera mounting |
+| [`scripts/clear-to-fragment.py`](scripts/clear-to-fragment.py) | laptop: reset machines to arm+camera+gripper+table+ceiling+walls |
+| [`docs/fleet-check-runbook.md`](docs/fleet-check-runbook.md) | doing the whole room at once: procedure, failure signatures, tolerances |
 | `out/` | gitignored: per-machine credentials and camera frames |
 
 ## Conventions that differ from HQ

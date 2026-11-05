@@ -245,6 +245,54 @@ Also check the 3D scene in https://app.viam.com against the real cell: the camer
 correct side of the wrist is the meaningful check. The ceiling exists only to stop the
 motion planner swinging the arm over the top; there are no walls at this event.
 
+## 8. The whole fleet at once: clear, then check every mounting
+
+Steps 2-7 are per box. Once the room is built, two scripts work on all of them together.
+Full procedure, failure signatures and tolerances:
+[`hackathon/docs/fleet-check-runbook.md`](../../../hackathon/docs/fleet-check-runbook.md).
+Read it before running either - both move hardware or rewrite configs.
+
+**Reset the cells** to arm + camera + gripper + table + ceiling + walls:
+
+```
+hackathon/venv/bin/python hackathon/scripts/clear-to-fragment.py --venue <slug> --all
+... --apply --restart
+```
+
+Two things in its dry-run output decide whether it is safe to apply:
+
+- `PROMOTED arm-ip / cam-sn` - a fragment_mod held the REAL value while the fragment
+  variable held a placeholder. Mods override variables, so the mod is the live truth and
+  the script copies it into the variable before dropping mods. One machine's
+  `arm-ip-address` variable was the gateway address.
+- `REFUSED: unrecognised component(s)` - the machine has a component that is neither an
+  obstacle nor a wall. It is either project work (droppable) or a **hardware fact**
+  (not). A vacuum end effector is described by a `vacuum` component plus a
+  `components.gripper.disabled` mod; drop those and the fragment's two-finger gripper
+  comes back on an arm that has not got one. Inspect, then `--keep <name>` or `--force`.
+
+**Always `--restart` after clearing.** Removing components does not rebuild the motion
+service's frame system: the cell reads healthy and still refuses every planned move with
+`Unlinked parts: [...]`.
+
+**Then check the mountings** - this moves every arm simultaneously:
+
+```
+hackathon/venv/bin/python hackathon/scripts/check-depth-alignment.py --venue <slug>
+... --only <one xarm6>,<one xarm850> --move      # prove it on one of each model first
+... --move                                        # then the fleet
+```
+
+It decides between the configured camera frame and its 180-degree flip, so it answers the
+step-7 mounting question without needing a person at each arm. Note the step-7 trap does
+NOT apply here and the reverse is true: pointing the tool straight DOWN cannot decide the
+mounting at all (a 180-degree rotation about a vertical axis maps a horizontal table onto
+itself - measured on hardware as 2.19 deg vs 2.17 deg). The tilted poses are what decide
+it. A good cell reads `cfg` 0-2 deg against `flip` 48-51 deg.
+
+Most failures are not configuration: e-stops, a camera not enumerating, an arm controller
+unpowered, or the box offline. The runbook has the signature table.
+
 ## Scope and iteration
 
 Do the deterministic work with the scripts. If a script is wrong, fix it under

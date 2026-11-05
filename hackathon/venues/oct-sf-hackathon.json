@@ -53,5 +53,36 @@
   "camera": {
     "_comment": "Empty serial => the realsense module uses the first camera it finds (per module README). Every box has exactly one RealSense, so no serial detection is needed. verify-cell.py prints the serial the module actually picked if you want to pin it later.",
     "serial": ""
+  },
+  "arm_fragments": {
+    "_comment": "Per-event arm fragments. 'current' is what clear-to-fragment.py puts a machine on; 'migrate_from' are older fragments that still identify the same arm model, so a not-yet-cleared machine is still recognised.",
+    "xArm6": {
+      "current": {
+        "id": "fe47f66a-af68-4875-ba6a-37181faab9c4",
+        "name": "SF-xarm6-mountplate-realsense-gripper"
+      },
+      "migrate_from": [
+        {
+          "id": "859f2598-60f1-43a2-8df2-13ffbee949cc",
+          "name": "xarm-realsense-gripper2"
+        },
+        {
+          "id": "f6e98d80-20a0-4fb6-9cb3-7b527a91ec10",
+          "name": "ufactory-xarm6-realsense"
+        }
+      ]
+    },
+    "xArm850": {
+      "current": {
+        "id": "086f4921-8427-47b6-92e0-dbdc87f2267c",
+        "name": "SF-xarm850-realsense-gripper"
+      },
+      "migrate_from": [
+        {
+          "id": "fd2be28c-71e5-4b8a-90a8-a514dbe75ca7",
+          "name": "xarm850-realsense-original"
+        }
+      ]
+    }
   }
 }
