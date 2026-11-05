@@ -56,6 +56,21 @@ ssh -t viam@sfhack3.local sudo bash ~/armfarm-setup/hackathon/scripts/install-co
 hackathon/venv/bin/python hackathon/scripts/verify-cell.py --venue oct-sf-hackathon --name sfhack3 --image
 ```
 
+Finally, once the cells are built, check the whole fleet's camera mounting at once.
+This MOVES every arm simultaneously, so make sure the cells are clear:
+
+```
+# dry run first - connects, moves nothing
+hackathon/venv/bin/python hackathon/scripts/check-depth-alignment.py --venue oct-sf-hackathon
+
+# prove it on one arm of each model before fanning out
+hackathon/venv/bin/python hackathon/scripts/check-depth-alignment.py --venue oct-sf-hackathon \
+    --only sfhack2,sfhack9 --move
+
+# then the fleet
+hackathon/venv/bin/python hackathon/scripts/check-depth-alignment.py --venue oct-sf-hackathon --move
+```
+
 ## Layout
 
 | path | purpose |
@@ -73,6 +88,7 @@ hackathon/venv/bin/python hackathon/scripts/verify-cell.py --venue oct-sf-hackat
 | [`scripts/provision-viam.py`](scripts/provision-viam.py) | laptop: machine in the event location, fragments, key, `out/viam.json.<name>` |
 | [`scripts/install-config.sh`](scripts/install-config.sh) | box, root: install credentials, (install viam-agent on a fresh box), restart |
 | [`scripts/verify-cell.py`](scripts/verify-cell.py) | laptop: resource states, camera frame, mounting question |
+| [`scripts/check-depth-alignment.py`](scripts/check-depth-alignment.py) | laptop: moves the whole fleet at once, PASS/FAIL on camera mounting |
 | `out/` | gitignored: per-machine credentials and camera frames |
 
 ## Conventions that differ from HQ
