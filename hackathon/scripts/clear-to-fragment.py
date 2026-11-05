@@ -279,7 +279,10 @@ async def amain():
         names = [n for n in pool if n not in skip]
         if not names:
             sys.exit("no machines selected (give names or --all)")
+        # Print the LOCATION ID, not just the event name: the id is what this writes to,
+        # and a venue file's `event` can name one thing while its location id is another.
         print(f"=== clear to fragment: {venue['event']} ===")
+        print(f"  location: {venue['location']['name']} ({venue['location']['id']})")
         print(f"  mode: {'APPLY' if args.apply else 'DRY RUN'}   machines: {len(names)}\n")
         if args.apply and not args.yes:
             print(f"  This REPLACES the config of {len(names)} machine(s): {', '.join(names)}")
