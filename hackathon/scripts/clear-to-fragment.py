@@ -25,11 +25,16 @@ and are opposites in practice:
 So --apply refuses to touch a machine carrying components this script does not recognise
 as obstacles, unless you pass --force or name them in --keep. Look first, then decide.
 
-For a VACUUM CELL the correct remedy is `--keep vacuum`, NOT --force. The
-`components.gripper.disabled` mod is a hardware fact, so it is carried forward
-automatically and re-emitted against the replacement fragment id. --force would drop it
-and put the fragment's two-finger gripper back alongside the vacuum - the exact failure
-described above. --force is for project components you have decided are disposable.
+A VACUUM CELL needs no flags. Hardware is recognised by MODEL, not by component name:
+anything whose model is in HARDWARE_MODELS (e.g. `viam:ufactory:vacuum_gripper`) is kept,
+and the `components.gripper.disabled` mod is carried forward and re-emitted against the
+replacement fragment id. Name-matching was a trap - sfhack14's component is called
+`vacuum-gripper`, so the `--keep vacuum` this file used to recommend kept nothing.
+
+--force bypasses the refusals for UNRECOGNISED components you have decided are
+disposable. It does not affect hardware kept by model, and it cannot drop a carried
+gripper.disabled: suppressing the fragment's gripper while dropping an end effector
+refuses even under --force, because the flange would end up empty.
 
 MODS CAN HOLD THE REAL HARDWARE IDENTITY
 ----------------------------------------
@@ -54,6 +59,10 @@ HACK = pathlib.Path(__file__).resolve().parent.parent
 ROOT = HACK.parent
 
 OBSTACLE_MODEL = "erh:vmodutils:obstacle"
+# End-effector models are HARDWARE, whatever the component is called. The fleet names
+# these inconsistently (sfhack14's is `vacuum-gripper`, not `vacuum`), so matching on the
+# name cannot work - and name-matching is what made --keep <name> a trap.
+HARDWARE_MODELS = {"viam:ufactory:vacuum_gripper"}
 WALLS = {   # centers, per docs/geometry.md - NOT faces
     "wall-back": ((-550, 0, 488), (50, 1500, 1024)),
     "wall-left": ((0, 650, 488), (1500, 50, 1024)),
@@ -136,12 +145,18 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
                     av["cam-serial-number"] = val
 
     keep_names = set(args.keep or [])
-    kept = [x for x in cfg.get("components", []) if x.get("name") in keep_names]
+    def is_hw(x):
+        return x.get("model") in HARDWARE_MODELS
+    def is_kept(x):
+        return x.get("name") in keep_names or is_hw(x)
+    kept = [x for x in cfg.get("components", []) if is_kept(x)]
+    hw_kept = [x.get("name") for x in cfg.get("components", []) if is_hw(x)
+               and x.get("name") not in keep_names]
     unknown = [x.get("name") for x in cfg.get("components", [])
-               if x.get("name") not in keep_names and x.get("name") not in WALLS
+               if not is_kept(x) and x.get("name") not in WALLS
                and x.get("model") != OBSTACLE_MODEL]
     dropped = [x.get("name") for x in cfg.get("components", [])
-               if x.get("name") not in keep_names and x.get("name") not in WALLS]
+               if not is_kept(x) and x.get("name") not in WALLS]
 
     # A mod can describe HARDWARE too (components.gripper.disabled on a vacuum cell), so
     # anything we did not promote is treated exactly like an unrecognised component.
@@ -151,19 +166,26 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
     # the fragment's gripper back on a flange that does not have one - the sfhack14 break.
     # They are re-emitted against the REPLACEMENT fragment id, since the old id is gone.
     CARRYABLE = {"components.gripper.disabled"}
+    def truthy(v):
+        # a config value can arrive as the STRING "false"
+        return (v.lower() not in ("false", "0", "")) if isinstance(v, str) else bool(v)
     leftover_mods, carry_mods = [], {}
     for fm in cfg.get("fragment_mods", []):
+        # A carryable key is only meaningful against the arm fragment being replaced.
+        # Aimed at any other fragment (e.g. one held by --keep-fragment) it is not ours
+        # to retarget, so it stays a leftover and refuses.
+        targets_arm = fm.get("fragment_id") in armmap
         for m in fm.get("mods", []):
             for op, body in m.items():
                 for k, val in (body or {}).items():
                     if op == "$set" and k in PROMOTABLE:
                         continue
-                    if op == "$set" and k in CARRYABLE:
+                    if op == "$set" and k in CARRYABLE and targets_arm:
                         # Only a truthy value is a hardware fact worth carrying:
                         # `disabled: False` is the fragment's own default, so carrying it
                         # emits a no-op mod. If two entries disagree, the suppression wins
                         # rather than whichever happened to be last.
-                        if val:
+                        if truthy(val):
                             carry_mods[k] = val
                         continue
                     leftover_mods.append(f"{op} {k}")
@@ -205,12 +227,15 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
         print(f"             PROMOTED {p}")
     for k, v in carry_mods.items():
         print(f"             CARRIED MOD {k}={v} -> fragment {repl[:8]}")
-    print(f"             drop: {len(dropped)} components, {len(cfg.get('fragment_mods', []))} mods, "
+    print(f"             drop: {len(dropped)} components, "
+          f"{len(leftover_mods)} mods ({len(carry_mods)} carried), "
           f"{len(cfg.get('modules', []))} modules, {len(cfg.get('services', []))} services")
     if dropped:
         print(f"             components: {', '.join(dropped[:10])}{' ...' if len(dropped) > 10 else ''}")
     if carried:
         print(f"             carrying top-level: {', '.join(sorted(carried))}")
+    if hw_kept:
+        print(f"             HARDWARE kept by model: {', '.join(hw_kept)}")
     if kept:
         print(f"             keeping components: {', '.join(x['name'] for x in kept)}")
     ip = av.get("arm-ip-address", "")
@@ -222,16 +247,31 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
         print(f"             REFUSED: arm-ip {ip!r} is empty, the host, the gateway, or off")
         print(f"                      the arm subnet {subnet}.x - provision-viam.py rejects these too.")
         return False
+    # Suppressing the fragment's gripper while DROPPING an end effector leaves the flange
+    # empty. Never intended, so it refuses even under --force. A cell that legitimately has
+    # nothing on the flange (gripper.disabled and no end-effector component at all) is a
+    # different thing and still clears.
+    ee_dropped = [x.get("name") for x in cfg.get("components", [])
+                  if not is_kept(x) and x.get("name") not in WALLS
+                  and x.get("api") == "rdk:component:gripper"
+                  and x.get("model") != OBSTACLE_MODEL]
+    if carry_mods.get("components.gripper.disabled") and ee_dropped:
+        print(f"             REFUSED: would suppress the fragment's gripper AND drop the end")
+        print(f"                      effector {ee_dropped[:4]} - the flange would be empty.")
+        print(f"                      Keep the real end effector:")
+        print(f"                        --keep {' --keep '.join(ee_dropped[:4])}")
+        return False
     if leftover_mods and not args.force:
         print(f"             REFUSED: fragment_mod(s) this script cannot carry: "
               f"{', '.join(sorted(set(leftover_mods))[:4])}")
-        print(f"                      A mod can describe HARDWARE (e.g. components.gripper.disabled")
-        print(f"                      on a vacuum cell). Inspect, then --force or --keep.")
+        print(f"                      A mod can describe HARDWARE. Inspect it, then --force")
+        print(f"                      if you have decided it is disposable.")
         return False
     if unknown and not args.force:
         print(f"             REFUSED: unrecognised component(s) {unknown[:6]} - these may describe")
-        print(f"                      HARDWARE (e.g. a vacuum gripper), not project work.")
-        print(f"                      Inspect, then re-run with --force or --keep <name>.")
+        print(f"                      HARDWARE, not project work. Inspect, then re-run with:")
+        print(f"                        --keep {' --keep '.join(unknown[:6])}")
+        print(f"                      (or --force if you have decided they are disposable)")
         return False
     if args.apply:
         await app.update_robot_part(robot_part_id=part_id, name=part.name, robot_config=new)

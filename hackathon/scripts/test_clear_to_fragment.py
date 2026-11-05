@@ -47,13 +47,14 @@ async def main():
     print("=== T1: venue file parses (B1) ===")
     print(f"   arm_fragment_map -> {len(ARMMAP)} fragment ids, models {sorted(CURRENT)}")
 
-    print("\n=== T2: vacuum cell with --keep vacuum (B2) ===")
-    vac = {"api":"rdk:component:gripper","model":"viam:ufactory:vacuum_gripper","name":"vacuum",
-           "frame":{"parent":"arm","translation":{"x":0,"y":0,"z":0}}}
-    ok,w = await run(base(components=[vac]), args(keep=["vacuum"]))
+    print("\n=== T2: vacuum cell is kept by MODEL, no --keep needed (B2) ===")
+    # real fleet name, and NO --keep: the model is what marks it as hardware
+    vac = {"api":"rdk:component:gripper","model":"viam:ufactory:vacuum_gripper",
+           "name":"vacuum-gripper","frame":{"parent":"arm","translation":{"x":0,"y":0,"z":0}}}
+    ok,w = await run(base(components=[vac]), args())
     names = [c["name"] for c in (w or {}).get("components",[])]
     print(f"   applied={ok}  components written = {names}")
-    print(f"   {'PASS' if 'vacuum' in names else 'FAIL'}: vacuum preserved")
+    print(f"   {'PASS' if 'vacuum-gripper' in names else 'FAIL'}: kept by model, no --keep needed")
 
     print("\n=== T3: an uncarryable mod must REFUSE (B3) ===")
     # gripper.disabled is now CARRIED (see T9). The guard must still fire for any mod
@@ -63,17 +64,17 @@ async def main():
     print(f"   {'PASS' if not ok and w is None else 'FAIL'}: refused={not ok}, nothing written={w is None}")
 
     print("\n=== T9: vacuum cell keeps vacuum AND carries gripper.disabled (sfhack14) ===")
-    vac = {"api":"rdk:component:gripper","model":"viam:ufactory:vacuum_gripper","name":"vacuum",
-           "frame":{"parent":"arm","translation":{"x":0,"y":0,"z":0}}}
+    vac = {"api":"rdk:component:gripper","model":"viam:ufactory:vacuum_gripper",
+           "name":"vacuum-gripper","frame":{"parent":"arm","translation":{"x":0,"y":0,"z":0}}}
     cfg14 = base(components=[vac],
                  modules=[{"type":"registry","module_id":"viam:ufactory","version":"0.5.0",
                            "name":"ufactory"}],
                  fragment_mods=[{"fragment_id":OLD850,
                                  "mods":[{"$set":{"components.gripper.disabled":True}}]}])
-    ok,w = await run(cfg14, args(keep=["vacuum"]))          # NO --force needed
+    ok,w = await run(cfg14, args())                        # no flags at all
     names = [c["name"] for c in (w or {}).get("components",[])]
     fm = (w or {}).get("fragment_mods",[])
-    kept_vac = "vacuum" in names
+    kept_vac = "vacuum-gripper" in names
     carried = any(m.get("$set",{}).get("components.gripper.disabled") is True
                   for e in fm for m in e.get("mods",[]))
     retargeted = all(e.get("fragment_id")==SF850 for e in fm)
@@ -83,12 +84,14 @@ async def main():
           f"vacuum kept={kept_vac}, gripper.disabled carried={carried}, "
           f"retargeted to new fragment={retargeted}")
 
-    print("\n=== T11: disabled=False is NOT carried; disagreement keeps suppression ===")
+    print("\n=== T11: disabled=False not carried; disagreement keeps suppression ===")
     off=[{"fragment_id":OLD850,"mods":[{"$set":{"components.gripper.disabled":False}}]}]
     ok,w = await run(base(fragment_mods=off), args())
     noop = (w or {}).get("fragment_mods")==[]
-    dis=[{"fragment_id":OLD850,"mods":[{"$set":{"components.gripper.disabled":True}}]},
-         {"fragment_id":OBST,"mods":[{"$set":{"components.gripper.disabled":False}}]}]
+    # both entries must target the ARM fragment: a carryable key aimed elsewhere now
+    # refuses (see T13), so spreading the disagreement across fragments tests nothing.
+    dis=[{"fragment_id":OLD850,"mods":[{"$set":{"components.gripper.disabled":True}},
+                                       {"$set":{"components.gripper.disabled":False}}]}]
     ok2,w2 = await run(base(fragment_mods=dis), args())
     kept=any(m.get("$set",{}).get("components.gripper.disabled") is True
              for e in (w2 or {}).get("fragment_mods",[]) for m in e.get("mods",[]))
@@ -96,8 +99,25 @@ async def main():
     print(f"   True+False     -> suppression kept={kept}  (want True)")
     print(f"   {'PASS' if noop and kept else 'FAIL'}: no no-op mod, suppression wins")
 
-    print("\n=== T10: vacuum cell WITHOUT --keep still refuses ===")
-    ok,w = await run(cfg14, args())
+    print("\n=== T10: suppression + a DROPPED end effector refuses even under --force ===")
+    odd = {"api":"rdk:component:gripper","model":"acme:weird:gripper","name":"custom-ee",
+           "frame":{"parent":"arm"}}
+    cfg_odd = base(components=[odd],
+                   fragment_mods=[{"fragment_id":OLD850,
+                                   "mods":[{"$set":{"components.gripper.disabled":True}}]}])
+    ok,w = await run(cfg_odd, args(force=True))
+    print(f"   {'PASS' if not ok and w is None else 'FAIL'}: refused={not ok}, nothing written={w is None}")
+
+    print("\n=== T12: a bare flange (suppression, no end effector) still clears ===")
+    ok,w = await run(base(fragment_mods=[{"fragment_id":OLD850,
+                          "mods":[{"$set":{"components.gripper.disabled":True}}]}]), args())
+    carried=any(m.get("$set",{}).get("components.gripper.disabled") is True
+                for e in (w or {}).get("fragment_mods",[]) for m in e.get("mods",[]))
+    print(f"   {'PASS' if ok and carried else 'FAIL'}: applied={ok}, suppression kept={carried}")
+
+    print("\n=== T13: a carryable mod aimed at a NON-arm fragment refuses ===")
+    ok,w = await run(base(fragment_mods=[{"fragment_id":OBST,
+                          "mods":[{"$set":{"components.gripper.disabled":True}}]}]), args())
     print(f"   {'PASS' if not ok and w is None else 'FAIL'}: refused={not ok}, nothing written={w is None}")
 
     print("\n=== T4: top-level keys carried (S1) ===")

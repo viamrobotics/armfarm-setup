@@ -30,8 +30,10 @@ def frags(av, extra=None):
     if extra: f.append(extra)
     return f
 
+# The REAL name on sfhack14 is `vacuum-gripper`, not `vacuum`. Using the real name is the
+# point: a fixture named to match the docs tests the docs, not the fleet.
 VACUUM = {"api":"rdk:component:gripper","model":"viam:ufactory:vacuum_gripper",
-          "name":"vacuum","frame":{"parent":"arm","translation":{"x":0,"y":0,"z":0}}}
+          "name":"vacuum-gripper","frame":{"parent":"arm","translation":{"x":0,"y":0,"z":0}}}
 UFACT  = {"type":"registry","module_id":"viam:ufactory","version":"0.5.0","name":"ufactory"}
 
 # name -> (config, clear-args, invariant(written_cfg) -> (ok, detail))
@@ -42,7 +44,7 @@ def cases():
         carried=any(m.get("$set",{}).get("components.gripper.disabled") is True
                     for e in fm for m in e.get("mods",[]))
         retgt=all(e.get("fragment_id")==SF850 for e in fm)
-        ok = "vacuum" in names and carried and retgt
+        ok = "vacuum-gripper" in names and carried and retgt
         return ok, f"components={names} mods={fm}"
     def inv_plain(c):
         names=sorted(x["name"] for x in c.get("components",[]))
@@ -64,8 +66,8 @@ def cases():
         "modules":[UFACT],"services":[],
         "fragment_mods":[{"fragment_id":OLD850,
                           "mods":[{"$set":{"components.gripper.disabled":True}}]}]},
-       ["--keep","vacuum"], inv_vac,
-       "sfhack14 replica: vacuum kept AND gripper.disabled carried+retargeted"),
+       [], inv_vac,
+       "sfhack14 replica (real name, NO flags): kept by model + mod carried"),
 
       ("ctftest-plain",
        {"fragments":frags(armvars()),
@@ -125,18 +127,34 @@ async def main():
     vpath = REPO / "hackathon" / "venues" / f"{vslug}.json"
     vpath.write_text(json.dumps(venue, indent=2))
 
+    import os, time
+    run = f"{int(time.time())%100000}-{os.getpid()%1000}"   # unique per run (#5)
+
     made, results = [], []
     try:
+        pre = {r.name for r in await app.list_robots(location_id=a.location)}
         for name, cfg, flags, inv, desc in cases():
+            name = f"{name}-{run}"
+            if name in pre:
+                raise SystemExit(f"refusing: {name} already exists in this location")
+            # Register the id FIRST: anything below can throw, and teardown only deletes
+            # what `made` knows about. Registering late orphans the machine (#3).
             rid = await app.new_robot(name=name, location_id=a.location)
+            made.append([name, rid, None, flags, inv, desc])
             parts = await app.get_robot_parts(rid)
-            pid = next(p.id for p in parts if p.main_part)
-            await app.update_robot_part(robot_part_id=pid, name=parts[0].name, robot_config=cfg)
-            made.append((name, rid, pid, flags, inv, desc))
-            print(f"created {name:18s} robot={rid[:8]} part={pid[:8]}")
+            main = next((p for p in parts if p.main_part), None)
+            if main is None:
+                raise RuntimeError(f"{name}: no main part")
+            pid = main.id
+            await app.update_robot_part(robot_part_id=pid, name=main.name, robot_config=cfg)
+            made[-1][2] = pid
+            print(f"created {name:24s} robot={rid[:8]} part={pid[:8]}")
 
         print("\n" + "="*72)
         for name, rid, pid, flags, inv, desc in made:
+            if pid is None:
+                print(f"\n### {name}  --  SKIPPED (never finished creating)")
+                results.append((name, False, "creation incomplete")); continue
             print(f"\n### {name}  --  {desc}")
             cmd=[sys.executable, str(SCR/"clear-to-fragment.py"), name,
                  "--venue", vslug, "--apply", "--yes", *flags]
@@ -152,13 +170,28 @@ async def main():
         # The venue file is regenerated every run and names a throwaway location, so it
         # must never outlive the run - including under --keep, or it lands in a commit.
         vpath.unlink(missing_ok=True)
+        # Every step below is independently guarded: one failure must not abort the rest,
+        # skip client.close(), or replace the traceback from the test body (#4).
         if not a.keep:
+            leaked = []
             for name, rid, *_ in made:
-                await app.delete_robot(robot_id=rid); print(f"deleted {name}")
+                try:
+                    await app.delete_robot(robot_id=rid); print(f"deleted {name}")
+                except Exception as e:
+                    leaked.append(f"machine {name} ({rid}): {e}")
             if made_loc:
-                await app.delete_location(location_id=made_loc)
-                print("deleted location ctf-test")
-        client.close()
+                try:
+                    await app.delete_location(location_id=made_loc)
+                    print("deleted location ctf-test")
+                except Exception as e:
+                    leaked.append(f"location ctf-test ({made_loc}): {e}")
+            if leaked:
+                print("\n!! LEAKED - delete these by hand:")
+                for l in leaked: print("   ", l)
+        try:
+            client.close()
+        except Exception:
+            pass
 
     print("\n" + "="*72)
     for n,ok,d in results: print(f"  {'PASS' if ok else 'FAIL'}  {n}")
