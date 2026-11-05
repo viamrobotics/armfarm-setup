@@ -90,16 +90,21 @@ def arm_fragment_map(venue):
         sys.exit(f"venue file has no 'arm_fragments' - add it (see hackathon/README.md)")
     out = {}
     for model, spec in af.items():
+        if model.startswith("_"):          # _comment and friends
+            continue
         cur = spec["current"]["id"]
         out[cur] = (model, cur)
         for old in spec.get("migrate_from", []):
             out[old["id"]] = (model, cur)
-    return out, {m: s["current"] for m, s in af.items()}
+    return out, {m: v["current"] for m, v in af.items() if not m.startswith("_")}
 
 
 async def clear_one(app, name, part_id, venue, armmap, current, args):
     part = await app.get_robot_part(part_id)
     cfg = part.robot_config
+    if cfg is None:
+        print(f"  {name:10s} SKIP - no robot_config")
+        return False
     cfg = json.loads(cfg) if isinstance(cfg, str) else json.loads(json.dumps(cfg))
     ids = [f["id"] for f in cfg.get("fragments", [])]
 
@@ -124,29 +129,53 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
                         promoted.append(f"cam-sn {av.get('cam-serial-number')!r} -> {val!r}")
                     av["cam-serial-number"] = val
 
-    keep_names = set(WALLS) | set(args.keep or [])
+    keep_names = set(args.keep or [])
+    kept = [x for x in cfg.get("components", []) if x.get("name") in keep_names]
     unknown = [x.get("name") for x in cfg.get("components", [])
-               if x.get("name") not in keep_names and x.get("model") != OBSTACLE_MODEL]
-    dropped = [x.get("name") for x in cfg.get("components", []) if x.get("name") not in keep_names]
+               if x.get("name") not in keep_names and x.get("name") not in WALLS
+               and x.get("model") != OBSTACLE_MODEL]
+    dropped = [x.get("name") for x in cfg.get("components", [])
+               if x.get("name") not in keep_names and x.get("name") not in WALLS]
+
+    # A mod can describe HARDWARE too (components.gripper.disabled on a vacuum cell), so
+    # anything we did not promote is treated exactly like an unrecognised component.
+    PROMOTABLE = {"components.arm.attributes.host", "components.cam.attributes.serial_number"}
+    leftover_mods = []
+    for fm in cfg.get("fragment_mods", []):
+        for m in fm.get("mods", []):
+            for op, body in m.items():
+                for k in (body or {}):
+                    if op != "$set" or k not in PROMOTABLE:
+                        leftover_mods.append(f"{op} {k}")
 
     obst = venue["obstacles_fragment"]["id"]
     ov = next((f.get("variables", {}) for f in cfg["fragments"] if f["id"] == obst), None)
-    frags = [{"id": repl, "variables": {
-                  "arm-name": av.get("arm-name", "arm"),
-                  "arm-ip-address": av.get("arm-ip-address", ""),
-                  "base-axis-rotation-degrees": av.get("base-axis-rotation-degrees", 0),
-                  "cam-serial-number": av.get("cam-serial-number", ""),
-                  "translation": av.get("translation", {"x": 0, "y": 0, "z": 0})}},
+    # Carry EVERY variable the machine had, not a whitelist: the replacement fragment may
+    # require ones this script has never heard of, and a missing variable fails to render.
+    newvars = dict(av)
+    newvars.setdefault("arm-name", "arm")
+    newvars.setdefault("base-axis-rotation-degrees", 0)
+    newvars.setdefault("cam-serial-number", "")
+    newvars.setdefault("translation", {"x": 0, "y": 0, "z": 0})
+    frags = [{"id": repl, "variables": newvars},
              {"id": obst, "variables": ov or {
                   "table-translation": dict(venue["workcell"]["table-translation"]),
                   "ceiling-translation": dict(venue["workcell"]["ceiling-translation"])}}]
     for extra in args.keep_fragment or []:
-        if extra in ids:
-            frags.append({"id": extra})
+        orig = next((f for f in cfg["fragments"] if f["id"] == extra), None)
+        if orig is not None:
+            frags.append(json.loads(json.dumps(orig)))   # keep its variables too
 
-    new = {"fragments": frags,
-           "components": [wall(w) for w in sorted(WALLS)],
-           "modules": [], "services": [], "fragment_mods": list(args.keep_mods or [])}
+    # update_robot_part REPLACES the config, so anything top-level we do not carry is
+    # destroyed - including `agent` (viam-agent's own settings), remotes, packages,
+    # processes. Carry everything we are not deliberately rewriting.
+    REWRITTEN = {"fragments", "components", "modules", "services", "fragment_mods"}
+    carried = {k: v for k, v in cfg.items() if k not in REWRITTEN}
+    walls = [wall(w) for w in sorted(WALLS) if w not in keep_names]
+    new = dict(carried)
+    new.update({"fragments": frags,
+                "components": kept + walls,
+                "modules": [], "services": [], "fragment_mods": []})
 
     print(f"  {name:10s} {model:7s} -> {current[model]['name']}")
     print(f"             arm-ip={av.get('arm-ip-address','?')}  cam-sn={av.get('cam-serial-number','')!r}")
@@ -156,6 +185,25 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
           f"{len(cfg.get('modules', []))} modules, {len(cfg.get('services', []))} services")
     if dropped:
         print(f"             components: {', '.join(dropped[:10])}{' ...' if len(dropped) > 10 else ''}")
+    if carried:
+        print(f"             carrying top-level: {', '.join(sorted(carried))}")
+    if kept:
+        print(f"             keeping components: {', '.join(x['name'] for x in kept)}")
+    ip = av.get("arm-ip-address", "")
+    host = venue.get("network", {}).get("arm_host_ip_cidr", "192.168.1.150/24").split("/")[0]
+    subnet = ".".join(host.split(".")[:3])
+    bad_ip = (not ip or ip == host or ip.endswith(".1")
+              or ".".join(ip.split(".")[:3]) != subnet)
+    if bad_ip and not args.force:
+        print(f"             REFUSED: arm-ip {ip!r} is empty, the host, the gateway, or off")
+        print(f"                      the arm subnet {subnet}.x - provision-viam.py rejects these too.")
+        return False
+    if leftover_mods and not args.force:
+        print(f"             REFUSED: fragment_mod(s) this script cannot carry: "
+              f"{', '.join(sorted(set(leftover_mods))[:4])}")
+        print(f"                      A mod can describe HARDWARE (e.g. components.gripper.disabled")
+        print(f"                      on a vacuum cell). Inspect, then --force or --keep.")
+        return False
     if unknown and not args.force:
         print(f"             REFUSED: unrecognised component(s) {unknown[:6]} - these may describe")
         print(f"                      HARDWARE (e.g. a vacuum gripper), not project work.")
@@ -176,11 +224,12 @@ async def amain():
     p.add_argument("--skip", default="", help="comma-separated names to exclude")
     p.add_argument("--keep", action="append", help="component name to preserve (repeatable)")
     p.add_argument("--keep-fragment", action="append", help="extra fragment id to preserve")
-    p.add_argument("--keep-mods", action="append", help=argparse.SUPPRESS)
     p.add_argument("--force", action="store_true",
                    help="clear even when unrecognised components are present")
     p.add_argument("--restart", action="store_true",
-                   help="restart each part afterwards so the motion service rebuilds its frame system")
+                   help="restart each part afterwards so the motion service rebuilds its "
+                        "frame system (required after dropping components)")
+    p.add_argument("--yes", action="store_true", help="skip the typed confirmation")
     p.add_argument("--apply", action="store_true")
     args = p.parse_args()
 
@@ -213,6 +262,14 @@ async def amain():
             sys.exit("no machines selected (give names or --all)")
         print(f"=== clear to fragment: {venue['event']} ===")
         print(f"  mode: {'APPLY' if args.apply else 'DRY RUN'}   machines: {len(names)}\n")
+        if args.apply and not args.yes:
+            print(f"  This REPLACES the config of {len(names)} machine(s): {', '.join(names)}")
+            print("  Config history keeps the old version, but nothing else does.")
+            try:
+                if input("  Type CLEAR to continue: ").strip() != "CLEAR":
+                    sys.exit("aborted")
+            except (EOFError, KeyboardInterrupt):
+                sys.exit("\naborted")
         done = []
         for n in names:
             if n not in parts:
@@ -222,6 +279,12 @@ async def amain():
                 done.append((n, parts[n]))
         if args.apply and args.restart and done:
             print("\n  restarting parts so the motion service rebuilds its frame system:")
+            for n, pid in done:
+                await app.mark_part_for_restart(pid)
+                print(f"    {n:10s} restart requested")
+        elif args.apply and done:
+            print("\n  NOT restarted. Removing components leaves the motion service with a stale")
+            print("  frame system - planned moves fail with 'Unlinked parts'. Run:")
             for n, pid in done:
                 print(f"    viam machines part restart --part {pid}   # {n}")
     finally:

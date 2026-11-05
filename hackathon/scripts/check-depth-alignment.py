@@ -417,29 +417,35 @@ def verdict(rows, table_z, args):
     mt = [r for r in rows if r["mount_test"]]
     if not mt:
         return "ERROR", "no discriminating pose completed"
-    cfg_flat = all(r["cfg"]["tilt"] < FLAT_DEG for r in mt)
-    flip_flat = all(r["flip"]["tilt"] < FLAT_DEG for r in mt)
-    cfg_steep = all(r["cfg"]["tilt"] > STEEP_DEG for r in mt)
-    flip_steep = all(r["flip"]["tilt"] > STEEP_DEG for r in mt)
     tl = " ".join(f"{r['pose']}:cfg{r['cfg']['tilt']:.0f}/flip{r['flip']['tilt']:.0f}" for r in mt)
 
-    if cfg_flat and flip_steep:
-        down = [r for r in rows if not r["mount_test"]]
-        if down:
-            dz = down[0]["cfg"]["z"] - table_z
-            if abs(dz) > args.tol_z:
-                return "FAIL", (f"mounting OK but table is {dz:+.0f}mm off "
-                                f"(arm model or table-translation?) [{tl}]")
-        return "PASS", tl
-    if flip_flat and cfg_steep:
+    # The two hypotheses differ by 2*alpha (~50 deg) REGARDLESS of how the table itself
+    # sits, so decide the mounting on the SEPARATION and the sign, not on an absolute
+    # threshold. A table that is genuinely tilted (an uneven plate) then still gets the
+    # right mounting verdict, and its tilt is reported separately instead of masquerading
+    # as "neither hypothesis is flat".
+    seps = [abs(r["cfg"]["tilt"] - r["flip"]["tilt"]) for r in mt]
+    if min(seps) < STEEP_DEG:
+        return "ERROR", (f"poses did not discriminate (separation {min(seps):.0f}deg < "
+                         f"{STEEP_DEG:.0f}) - tool too close to vertical [{tl}]")
+    cfg_wins = all(r["cfg"]["tilt"] < r["flip"]["tilt"] for r in mt)
+    flip_wins = all(r["flip"]["tilt"] < r["cfg"]["tilt"] for r in mt)
+    if flip_wins:
         return "FAIL", f"mounting is the OTHER candidate - swap the fragment [{tl}]"
-    if cfg_flat and flip_flat:
-        return "ERROR", f"poses did not discriminate (tool too close to vertical) [{tl}]"
-    if cfg_flat:
-        worst = min(r["flip"]["tilt"] for r in mt)
-        return "ERROR", (f"config looks right but the flip is only {worst:.0f}deg - "
-                         f"not conclusive, tool was not tilted enough [{tl}]")
-    return "FAIL", f"neither hypothesis gives a flat table - arm model/table/calibration [{tl}]"
+    if not cfg_wins:
+        return "ERROR", f"poses disagree on which hypothesis is flatter [{tl}]"
+
+    worst = max(r["cfg"]["tilt"] for r in mt)
+    if worst > FLAT_DEG:
+        return "FAIL", (f"mounting is right but the table reads {worst:.0f}deg off level - "
+                        f"uneven table, or arm base not square to it [{tl}]")
+    down = [r for r in rows if not r["mount_test"]]
+    if down:
+        dz = down[0]["cfg"]["z"] - table_z
+        if abs(dz) > args.tol_z:
+            return "FAIL", (f"mounting OK but table is {dz:+.0f}mm off "
+                            f"(arm model or table-translation?) [{tl}]")
+    return "PASS", tl
 
 
 async def run_machine(name, fqdn, kid, key, args, table_z_default, stop_flag, active):
@@ -473,13 +479,20 @@ async def run_machine(name, fqdn, kid, key, args, table_z_default, stop_flag, ac
             return res
         notready = [f"{n}={states[n]}" for n in ("arm", "cam") if "READY" not in states[n]]
         if notready:
-            res.detail = "not ready: " + ",".join(notready)
+            # the runbook's failure table keys on the controller's own words
+            # ("Emergency Stop Button Pushed In", "devices found: 0") - surface them.
+            errs = [str(r.error)[:120] for r in st.resources
+                    if r.name.name in ("arm", "cam") and getattr(r, "error", None)]
+            res.detail = "not ready: " + ",".join(notready) + (("  " + " | ".join(errs)) if errs else "")
             return res
 
         arm = Arm.from_robot(robot, "arm")
         cam = Camera.from_robot(robot, "cam")
         motion = Motion.from_robot(robot, "builtin")
-        table_z, src = await table_top_from_machine(robot, table_z_default)
+        if args.table_top_z is not None:
+            table_z, src = args.table_top_z, "--table-top-z"
+        else:
+            table_z, src = await table_top_from_machine(robot, table_z_default)
         res.table_z = table_z
 
         if await arm.is_moving():
@@ -567,13 +580,15 @@ async def run_machine(name, fqdn, kid, key, args, table_z_default, stop_flag, ac
         res.detail = f"{type(e).__name__}: {str(e)[:100]}"
         return res
     finally:
-        active.discard(robot)
+        # discard AFTER the restore: on_sigint only stops robots still in `active`, and a
+        # restore is itself an obstacle-blind motion we must be able to interrupt.
         if arm is not None and args.move and args.restore and allow_restore and not stop_flag.is_set():
             try:
                 if not await restore(arm, start_joints, args):
                     res.left_at = reached      # where it ACTUALLY is, not POSES[-1]
             except Exception:
                 pass
+        active.discard(robot)
         try:
             await robot.close()
         except Exception:

@@ -93,6 +93,7 @@ hackathon/venv/bin/python hackathon/scripts/check-depth-alignment.py --venue oct
 | [`scripts/verify-cell.py`](scripts/verify-cell.py) | laptop: resource states, camera frame, mounting question |
 | [`scripts/check-depth-alignment.py`](scripts/check-depth-alignment.py) | laptop: moves the whole fleet at once, PASS/FAIL on camera mounting |
 | [`scripts/clear-to-fragment.py`](scripts/clear-to-fragment.py) | laptop: reset machines to arm+camera+gripper+table+ceiling+walls |
+| [`scripts/test_clear_to_fragment.py`](scripts/test_clear_to_fragment.py) | offline tests for the above - run after touching it |
 | [`docs/fleet-check-runbook.md`](docs/fleet-check-runbook.md) | doing the whole room at once: procedure, failure signatures, tolerances |
 | `out/` | gitignored: per-machine credentials and camera frames |
 

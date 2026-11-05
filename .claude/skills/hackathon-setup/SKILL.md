@@ -243,7 +243,9 @@ In"**: that is the physical button on the controller, not configuration.
 
 Also check the 3D scene in https://app.viam.com against the real cell: the camera on the
 correct side of the wrist is the meaningful check. The ceiling exists only to stop the
-motion planner swinging the arm over the top; there are no walls at this event.
+motion planner swinging the arm over the top. The venue obstacles fragment carries no
+walls; `clear-to-fragment.py` adds `wall-back` and `wall-left` as machine-level
+components (step 8), so a cell cleared with that script does have two.
 
 ## 8. The whole fleet at once: clear, then check every mounting
 
@@ -284,11 +286,15 @@ hackathon/venv/bin/python hackathon/scripts/check-depth-alignment.py --venue <sl
 ```
 
 It decides between the configured camera frame and its 180-degree flip, so it answers the
-step-7 mounting question without needing a person at each arm. Note the step-7 trap does
-NOT apply here and the reverse is true: pointing the tool straight DOWN cannot decide the
-mounting at all (a 180-degree rotation about a vertical axis maps a horizontal table onto
-itself - measured on hardware as 2.19 deg vs 2.17 deg). The tilted poses are what decide
-it. A good cell reads `cfg` 0-2 deg against `flip` 48-51 deg.
+step-7 mounting question without needing a person at each arm.
+
+Step 7's rule still holds - never decide mounting from the gripper. This script does not
+use the 168mm camera-position cue either; it uses the fact that the two candidates differ
+by Rz(180) about the flange. One consequence is worth knowing: pointing the tool straight
+DOWN cannot decide the mounting at all, because a 180-degree rotation about a vertical
+axis maps a horizontal table onto itself (measured on hardware: 2.19 deg vs 2.17 deg).
+The TILTED poses are what decide it. A good cell reads `cfg` 0-2 deg against `flip`
+48-51 deg.
 
 Most failures are not configuration: e-stops, a camera not enumerating, an arm controller
 unpowered, or the box offline. The runbook has the signature table.

@@ -56,6 +56,29 @@ correct - and refuses every planned move with
 `Some frames are not linked to the world frame. Unlinked parts: [...]`.
 `--restart` prints the commands; run them.
 
+### A note on walls
+
+The venue obstacles fragment is table + ceiling only - `hackathon/README.md` and the venue
+file both say "no walls", and that is still true of the fragment. `clear-to-fragment.py`
+adds `wall-back` (face x=-525) and `wall-left` (face y=+625) as machine-level components,
+because the cells at this event sit against a back wall and a wall on their left.
+
+`docs/geometry.md` says left-vs-right is a value, not a fork. These are currently
+hard-coded in the script, so **a cell whose wall is on the right gets a phantom left wall
+and no right one** - the planner then refuses legitimate moves and permits moves into the
+real wall. If any cell is mirrored, pass `--keep` for its own wall components and fix the
+geometry by hand until the walls move into the venue file.
+
+### A note on fragment identity
+
+`config/fleet.json` describes the HQ fragments and is **stale for this event**: it calls
+`086f4921` "xarm850-realsense-gripper2" with `cam t=(-83,14,18)`, but that fragment has
+since been renamed `SF-xarm850-realsense-gripper` and recalibrated - it now carries
+`cam t=(67.5,-23.1,17.5) th=90` and `gripper z=150`. The SF fragments are not either of
+the old original/gripper2 pair; they supersede both, which is why cells coming from either
+one pass on them. `scripts/check-fragments.py` does not cover them. Trust the live
+fragment, not fleet.json, until that is reconciled.
+
 ## 2. Check the mountings
 
 ```
