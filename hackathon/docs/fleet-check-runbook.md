@@ -42,7 +42,10 @@ hackathon/venv/bin/python hackathon/scripts/clear-to-fragment.py --venue <slug> 
   end effector is described by a `vacuum` component *plus* a
   `components.gripper.disabled` mod; delete those and the fragment's two-finger gripper
   returns on an arm that has not got one, and the controller reports
-  `End Module Communication Error`. Inspect, then `--keep <name>` or `--force`.
+  `End Module Communication Error`. Inspect, then `--keep <name>`.
+  For a vacuum cell use `--keep vacuum` and **not** `--force`: the
+  `components.gripper.disabled` mod is carried forward automatically (retargeted to the
+  new fragment), and `--force` would drop it and restore the fragment's gripper.
 
 Then:
 

@@ -55,9 +55,36 @@ async def main():
     print(f"   applied={ok}  components written = {names}")
     print(f"   {'PASS' if 'vacuum' in names else 'FAIL'}: vacuum preserved")
 
-    print("\n=== T3: hardware mod (gripper.disabled) must REFUSE (B3) ===")
-    mods=[{"fragment_id":OLD850,"mods":[{"$set":{"components.gripper.disabled":True}}]}]
+    print("\n=== T3: an uncarryable mod must REFUSE (B3) ===")
+    # gripper.disabled is now CARRIED (see T9). The guard must still fire for any mod
+    # this script can neither promote into a variable nor carry forward.
+    mods=[{"fragment_id":OLD850,"mods":[{"$merge":{"components.arm.attributes":{"speed":120}}}]}]
     ok,w = await run(base(fragment_mods=mods), args())
+    print(f"   {'PASS' if not ok and w is None else 'FAIL'}: refused={not ok}, nothing written={w is None}")
+
+    print("\n=== T9: vacuum cell keeps vacuum AND carries gripper.disabled (sfhack14) ===")
+    vac = {"api":"rdk:component:gripper","model":"viam:ufactory:vacuum_gripper","name":"vacuum",
+           "frame":{"parent":"arm","translation":{"x":0,"y":0,"z":0}}}
+    cfg14 = base(components=[vac],
+                 modules=[{"type":"registry","module_id":"viam:ufactory","version":"0.5.0",
+                           "name":"ufactory"}],
+                 fragment_mods=[{"fragment_id":OLD850,
+                                 "mods":[{"$set":{"components.gripper.disabled":True}}]}])
+    ok,w = await run(cfg14, args(keep=["vacuum"]))          # NO --force needed
+    names = [c["name"] for c in (w or {}).get("components",[])]
+    fm = (w or {}).get("fragment_mods",[])
+    kept_vac = "vacuum" in names
+    carried = any(m.get("$set",{}).get("components.gripper.disabled") is True
+                  for e in fm for m in e.get("mods",[]))
+    retargeted = all(e.get("fragment_id")==SF850 for e in fm)
+    print(f"   applied={ok}  components={names}")
+    print(f"   fragment_mods={fm}")
+    print(f"   {'PASS' if ok and kept_vac and carried and retargeted else 'FAIL'}: "
+          f"vacuum kept={kept_vac}, gripper.disabled carried={carried}, "
+          f"retargeted to new fragment={retargeted}")
+
+    print("\n=== T10: vacuum cell WITHOUT --keep still refuses ===")
+    ok,w = await run(cfg14, args())
     print(f"   {'PASS' if not ok and w is None else 'FAIL'}: refused={not ok}, nothing written={w is None}")
 
     print("\n=== T4: top-level keys carried (S1) ===")

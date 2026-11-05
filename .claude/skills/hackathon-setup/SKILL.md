@@ -271,7 +271,9 @@ Two things in its dry-run output decide whether it is safe to apply:
   obstacle nor a wall. It is either project work (droppable) or a **hardware fact**
   (not). A vacuum end effector is described by a `vacuum` component plus a
   `components.gripper.disabled` mod; drop those and the fragment's two-finger gripper
-  comes back on an arm that has not got one. Inspect, then `--keep <name>` or `--force`.
+  comes back on an arm that has not got one. Inspect, then `--keep <name>`. For a vacuum
+  cell use `--keep vacuum`, never `--force`: the `components.gripper.disabled` mod is
+  carried forward automatically, and `--force` drops it and restores the gripper.
 
 **Always `--restart` after clearing.** Removing components does not rebuild the motion
 service's frame system: the cell reads healthy and still refuses every planned move with

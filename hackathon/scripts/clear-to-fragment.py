@@ -23,7 +23,13 @@ and are opposites in practice:
                      "End Module Communication Error" - which reads like a cable fault.
 
 So --apply refuses to touch a machine carrying components this script does not recognise
-as obstacles, unless you pass --force or name them in --drop. Look first, then decide.
+as obstacles, unless you pass --force or name them in --keep. Look first, then decide.
+
+For a VACUUM CELL the correct remedy is `--keep vacuum`, NOT --force. The
+`components.gripper.disabled` mod is a hardware fact, so it is carried forward
+automatically and re-emitted against the replacement fragment id. --force would drop it
+and put the fragment's two-finger gripper back alongside the vacuum - the exact failure
+described above. --force is for project components you have decided are disposable.
 
 MODS CAN HOLD THE REAL HARDWARE IDENTITY
 ----------------------------------------
@@ -140,13 +146,22 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
     # A mod can describe HARDWARE too (components.gripper.disabled on a vacuum cell), so
     # anything we did not promote is treated exactly like an unrecognised component.
     PROMOTABLE = {"components.arm.attributes.host", "components.cam.attributes.serial_number"}
-    leftover_mods = []
+    # Some mods are hardware facts we can neither promote into a variable nor discard:
+    # a vacuum cell suppresses the fragment's two-finger gripper. Dropping that mod puts
+    # the fragment's gripper back on a flange that does not have one - the sfhack14 break.
+    # They are re-emitted against the REPLACEMENT fragment id, since the old id is gone.
+    CARRYABLE = {"components.gripper.disabled"}
+    leftover_mods, carry_mods = [], {}
     for fm in cfg.get("fragment_mods", []):
         for m in fm.get("mods", []):
             for op, body in m.items():
-                for k in (body or {}):
-                    if op != "$set" or k not in PROMOTABLE:
-                        leftover_mods.append(f"{op} {k}")
+                for k, val in (body or {}).items():
+                    if op == "$set" and k in PROMOTABLE:
+                        continue
+                    if op == "$set" and k in CARRYABLE:
+                        carry_mods[k] = val
+                        continue
+                    leftover_mods.append(f"{op} {k}")
 
     obst = venue["obstacles_fragment"]["id"]
     ov = next((f.get("variables", {}) for f in cfg["fragments"] if f["id"] == obst), None)
@@ -173,14 +188,18 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
     carried = {k: v for k, v in cfg.items() if k not in REWRITTEN}
     walls = [wall(w) for w in sorted(WALLS) if w not in keep_names]
     new = dict(carried)
+    newmods = ([{"fragment_id": repl, "mods": [{"$set": dict(carry_mods)}]}]
+               if carry_mods else [])
     new.update({"fragments": frags,
                 "components": kept + walls,
-                "modules": [], "services": [], "fragment_mods": []})
+                "modules": [], "services": [], "fragment_mods": newmods})
 
     print(f"  {name:10s} {model:7s} -> {current[model]['name']}")
     print(f"             arm-ip={av.get('arm-ip-address','?')}  cam-sn={av.get('cam-serial-number','')!r}")
     for p in promoted:
         print(f"             PROMOTED {p}")
+    for k, v in carry_mods.items():
+        print(f"             CARRIED MOD {k}={v} -> fragment {repl[:8]}")
     print(f"             drop: {len(dropped)} components, {len(cfg.get('fragment_mods', []))} mods, "
           f"{len(cfg.get('modules', []))} modules, {len(cfg.get('services', []))} services")
     if dropped:
