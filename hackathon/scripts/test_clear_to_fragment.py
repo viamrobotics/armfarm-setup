@@ -83,6 +83,19 @@ async def main():
           f"vacuum kept={kept_vac}, gripper.disabled carried={carried}, "
           f"retargeted to new fragment={retargeted}")
 
+    print("\n=== T11: disabled=False is NOT carried; disagreement keeps suppression ===")
+    off=[{"fragment_id":OLD850,"mods":[{"$set":{"components.gripper.disabled":False}}]}]
+    ok,w = await run(base(fragment_mods=off), args())
+    noop = (w or {}).get("fragment_mods")==[]
+    dis=[{"fragment_id":OLD850,"mods":[{"$set":{"components.gripper.disabled":True}}]},
+         {"fragment_id":OBST,"mods":[{"$set":{"components.gripper.disabled":False}}]}]
+    ok2,w2 = await run(base(fragment_mods=dis), args())
+    kept=any(m.get("$set",{}).get("components.gripper.disabled") is True
+             for e in (w2 or {}).get("fragment_mods",[]) for m in e.get("mods",[]))
+    print(f"   disabled=False -> mods={(w or {}).get('fragment_mods')}  (want [])")
+    print(f"   True+False     -> suppression kept={kept}  (want True)")
+    print(f"   {'PASS' if noop and kept else 'FAIL'}: no no-op mod, suppression wins")
+
     print("\n=== T10: vacuum cell WITHOUT --keep still refuses ===")
     ok,w = await run(cfg14, args())
     print(f"   {'PASS' if not ok and w is None else 'FAIL'}: refused={not ok}, nothing written={w is None}")

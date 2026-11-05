@@ -159,7 +159,12 @@ async def clear_one(app, name, part_id, venue, armmap, current, args):
                     if op == "$set" and k in PROMOTABLE:
                         continue
                     if op == "$set" and k in CARRYABLE:
-                        carry_mods[k] = val
+                        # Only a truthy value is a hardware fact worth carrying:
+                        # `disabled: False` is the fragment's own default, so carrying it
+                        # emits a no-op mod. If two entries disagree, the suppression wins
+                        # rather than whichever happened to be last.
+                        if val:
+                            carry_mods[k] = val
                         continue
                     leftover_mods.append(f"{op} {k}")
 
