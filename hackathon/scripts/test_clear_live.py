@@ -149,10 +149,12 @@ async def main():
             results.append((name, ok, detail))
             print(f"   VERIFY {'PASS' if ok else 'FAIL'}: {detail}")
     finally:
+        # The venue file is regenerated every run and names a throwaway location, so it
+        # must never outlive the run - including under --keep, or it lands in a commit.
+        vpath.unlink(missing_ok=True)
         if not a.keep:
             for name, rid, *_ in made:
                 await app.delete_robot(robot_id=rid); print(f"deleted {name}")
-            vpath.unlink(missing_ok=True)
             if made_loc:
                 await app.delete_location(location_id=made_loc)
                 print("deleted location ctf-test")
