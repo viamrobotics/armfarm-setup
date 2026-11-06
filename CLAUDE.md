@@ -14,6 +14,7 @@ Constants (org/location/fragment ids, arm IP, workcell geometry) live in
 | `scripts/setup-host.sh` | hostname, mDNS, ssh |
 | `scripts/setup-network.sh` | arm link + office LAN, ports chosen by `lib/pick-nics.sh` |
 | `scripts/lib/pick-nics.sh` | which port is the arm and which is the LAN. Sourced by both of the above |
+| `scripts/discover-arm-ip.sh` | find this arm's controller address on the arm subnet. Run after `setup-network.sh` |
 | `scripts/provision-viam.py` | create machine, mint key, write /etc/viam.json, apply fragments |
 | `scripts/update-fragments.py` | push local JSON into a Viam fragment (app API) |
 | `scripts/identify-config.py` | which of the four configs is this? (collaborative) |
@@ -87,6 +88,9 @@ mounting handedness — they drifted, and one of them is wrong. That is the fail
   confirm each arm and pass `--arm-ip`. Assuming the default gives you a machine that
   provisions cleanly and then sits at `STATE_UNHEALTHY` with a connection timeout, which
   looks like a broken arm rather than a wrong address.
+  Once the host is on the arm subnet, `scripts/discover-arm-ip.sh` finds it in about a
+  second — it keeps only hosts with TCP 502 open, so it identifies the controller rather
+  than reporting whatever else answers a ping.
 - **The host must be a different address on the arm subnet** (`192.168.1.150`). Setting the
   host to the arm's address fails duplicate-address detection every time the cable actually
   reaches the arm. `provision-viam.py` rejects an `--arm-ip` equal to the host, or off the
