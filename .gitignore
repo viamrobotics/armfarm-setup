@@ -4,3 +4,4 @@ orgkey.txt
 venv/
 __pycache__/
 hackathon/out/
+hackathon/venues/ctftest.json
