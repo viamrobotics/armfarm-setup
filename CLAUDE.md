@@ -109,9 +109,10 @@ mounting handedness — they drifted, and one of them is wrong. That is the fail
   another machine, or left from a camera that was swapped, gives the same
   `failed to start device` as a USB fault. Run `scripts/check-cam-serial.py <machine>`
   before blaming the cable: it adds a temporary `viam:realsense:discovery` service,
-  compares, and removes the service. A matching serial with that error points at USB
-  (armfarm17 and armfarm18 matched on 2026-11-20; their cameras came back after a config
-  reload).
+  compares, and removes the service. A matching serial with that error points at USB.
+  On 2026-11-20 armfarm17 was configured for a serial no connected camera had until
+  someone corrected it mid-day; armfarm18's RealSense kept dropping off the bus even after
+  a module restart (usb-diagnostics PR #30).
 - **Arm model fragments were wrong on two machines on 2026-11-19.** armfarm07c ran the
   xArm850 fragment on an xArm6, and armfarm03 ran the xArm6 fragment on an xArm850. People
   caught both: 07c's 3D scene did not match its arm, and Shannon knew armfarm03's arm was an
