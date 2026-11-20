@@ -5,3 +5,4 @@ venv/
 __pycache__/
 hackathon/out/
 hackathon/venues/ctftest.json
+backups/
