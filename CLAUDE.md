@@ -19,6 +19,8 @@ Constants (org/location/fragment ids, arm IP, workcell geometry) live in
 | `scripts/update-fragments.py` | push local JSON into a Viam fragment (app API) |
 | `scripts/identify-config.py` | which of the four configs is this? (collaborative) |
 | `scripts/check-fragments.py` | assert the four arm fragments agree where they must |
+| `scripts/check-cam-serial.py` | compare each machine's `cam-serial-number` with the RealSense that discovery finds; `--apply` fixes it |
+| `scripts/reset-open-lab.py` | reset a machine to its open lab baseline: fragments, overview webcam, microphone |
 | `fragments/*.json` | version-controlled source of truth for each fragment |
 | `config/fleet.json` | ids and defaults |
 
@@ -77,6 +79,10 @@ mounting handedness — they drifted, and one of them is wrong. That is the fail
   arm gets the other. Consequence: **the office LAN must be plugged in and up before
   `setup-network.sh` runs** on a two-port box — otherwise it cannot tell the ports apart and
   stops, asking for `--arm-nic` / `--lan-nic`.
+  A third layout: two onboard ports plus a USB adapter with no cable in it (armfarm14,
+  2026-11-20). The old rule made the empty adapter the LAN. `pick-nics.sh` now ignores an
+  adapter with no carrier when the default route is on an onboard port, and uses the
+  two-port rule. `scripts/test_pick_nics.py` replays each layout against the rule.
 - **Never give the arm the port that carries the default route.** The arm profile is static
   and `never-default`; applying it to the live LAN port takes the box off the network, and
   these boxes have no wifi to fall back to (tailscale rides the same underlay, so that is
@@ -98,6 +104,29 @@ mounting handedness — they drifted, and one of them is wrong. That is the fail
 - **sysfs `serial` for a RealSense is the ASIC serial, not the device serial** the driver
   matches on. Wrong one => `failed to start device`. Use `rs-enumerate-devices`, or read the
   device serial out of viam-server's startup log.
+- **RealSense serials were wrong on three machines on 2026-11-19** (armfarm03 had
+  243322071795 configured; the camera plugged in was 262422075484). A serial copied from
+  another machine, or left from a camera that was swapped, gives the same
+  `failed to start device` as a USB fault. Run `scripts/check-cam-serial.py <machine>`
+  before blaming the cable: it adds a temporary `viam:realsense:discovery` service,
+  compares, and removes the service. A matching serial with that error points at USB
+  (armfarm17 and armfarm18 matched on 2026-11-20; their cameras came back after a config
+  reload).
+- **Arm model fragments were wrong on two machines on 2026-11-19.** armfarm07c ran the
+  xArm850 fragment on an xArm6, and armfarm03 ran the xArm6 fragment on an xArm850. People
+  caught both: 07c's 3D scene did not match its arm, and Shannon knew armfarm03's arm was an
+  850. A wrong model gives wrong kinematics, not a config error. Ask the person
+  at the machine which arm it is, then have them compare the 3D scene with the arm before
+  calling the machine done. Never take the model from the current config.
+- **A machine's identity can drift from its box.** The armfarm3 box ran as `demo-rig` for a
+  week after someone swapped its `/etc/viam.json`. The armfarm16 box was renamed armfarm07b,
+  then re-provisioned as a new machine armfarm07c, which left 07b offline with the same
+  camera serial. Two machines named armfarm11 existed at once, a live one in Arm Farm and a
+  stale one in Lab Machines, so a status check on the stale one reported the live one
+  offline; two hosts also answered to `armfarm11.local`. Before changing a machine, match
+  the box to the machine: read the part id in the box's `/etc/viam.json`, compare it with
+  the part you are about to edit, and check that only one machine in the org has that
+  name. `check-cam-serial.py` refuses a name that two machines in the fleet location share.
 - **The camera and gripper drivers already publish collision geometry.** Do NOT add
   `frame.geometry` — configured geometry overrides the model's, replacing accurate vendor
   data (a two-box gripper model, and a camera box with a 32.2mm offset) with guesses.

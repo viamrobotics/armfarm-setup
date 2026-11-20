@@ -101,6 +101,18 @@ address, so a typo fails before anything is written.
 each box. Just never hand-copy one between machines, and never use the sysfs serial
 (step 4).
 
+On a machine that is already registered, check the serial from your laptop instead:
+
+```
+./scripts/check-cam-serial.py armfarmN            # report match or mismatch
+./scripts/check-cam-serial.py armfarmN --apply    # also write the discovered serial
+```
+
+Three machines had a wrong `cam-serial-number` on 2026-11-19. The script adds a temporary
+`viam:realsense:discovery` service, compares, and removes the service; it backs up the
+part config to `backups/` first. If the serial matches and `cam` still reports
+`failed to start device`, look at the USB link, not the config.
+
 ## 1b. Work out which of the FOUR configurations this machine is
 
 **Do this with the person at the machine.** Two of the three answers are physical facts
@@ -112,6 +124,12 @@ has all four under `arm_configs`.
 
 **Arm model** — ask. The xArm850 has visibly longer reach and the controller is labelled.
 Getting this wrong means wrong kinematics, so confirm rather than infer.
+
+Two machines had the wrong model fragment on 2026-11-19: armfarm07c ran the xArm850
+fragment on an xArm6, and armfarm03 ran the xArm6 fragment on an xArm850. The current
+config is not evidence of the model. Ask the person at the machine, and after the config
+is applied have them compare the 3D scene with the arm (step 6). Swapping the model is
+the same one-delete, one-add fragment change as swapping the mounting.
 
 **Mounting** — this is decided by **where the camera physically is**, and there is a
 decisive test. Once a config is applied and the arm is up, get its pose and run:
@@ -153,6 +171,28 @@ plus one add, and nothing else in the machine config changes.
 
 **Wall side** — ask; not discoverable from the machine.
 
+## 1c. Confirm the box is the machine you think it is
+
+A box and its Viam machine can drift apart, and each of these has happened:
+
+- the armfarm3 box ran as `demo-rig` for a week after its `/etc/viam.json` was swapped;
+- the armfarm16 box was renamed armfarm07b, then re-provisioned as a new machine
+  armfarm07c, leaving 07b offline;
+- two machines named armfarm11 existed at once (a live one in Arm Farm, a stale one in Lab
+  Machines), and a check of the stale one reported the live one offline. Two hosts also
+  answered to `armfarm11.local`.
+
+Before you change a machine:
+
+- on the box, read the part id (this prints the id only, not the secret) and compare it
+  with the part you are about to edit in the app:
+  `sudo python3 -c "import json; print(json.load(open('/etc/viam.json'))['cloud']['id'])"`
+- check that only one machine in the org has the name, across every location;
+- when you report a machine offline, check its last access time at that moment, in the
+  location it actually runs in.
+
+`check-cam-serial.py` refuses a name that two machines in the fleet location (`config/fleet.json`) share.
+
 ## 2. Hostname, mDNS, ssh
 
 ```
@@ -181,6 +221,7 @@ Arm link (static `192.168.1.150/24`, never-default, MAC-bound) on one port, offi
 |---|---|---|
 | one onboard NIC + USB adapter | the onboard port | the USB adapter |
 | **two onboard ethernet ports** (newer Meerkats) | the port *without* the default route | the port *with* it |
+| two onboard ports plus a USB adapter with no cable (armfarm14) | the onboard port without the default route | the onboard port with it |
 
 On a two-port box the bus type cannot tell the ports apart, so the office LAN is
 identified by **which port currently holds the default route**. That means:
@@ -258,7 +299,10 @@ command to install it, which is the safe default if you are unsure.
 ## 6. Verify
 
 - all resources `STATE_READY`, machine `STATE_RUNNING`
-- grab an image from `cam` — confirms the serial and the camera end to end
+- grab an image from `cam`, which confirms the serial and the camera end to end. If `cam` is
+  not ready, run `scripts/check-cam-serial.py armfarmN` before touching the USB cable
+- have the person at the machine confirm the arm model against the 3D scene: an xArm850
+  config on an xArm6 (or the reverse) draws an arm with the wrong link lengths
 - check the 3D scene against the real robot: the camera on the correct side of the wrist is
   the meaningful check. If the scene disagrees with the robot, re-run step 1b rather than
   adjusting numbers - and note the gripper looking "right" proves nothing either way
