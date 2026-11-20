@@ -30,6 +30,8 @@ INSTALLER_URL = "https://storage.googleapis.com/packages.viam.com/apps/viam-agen
 def agent_installed() -> bool:
     if shutil.which("viam-agent") or pathlib.Path("/opt/viam/bin/viam-agent").exists():
         return True
+    if not shutil.which("systemctl"):
+        return False  # run from a laptop (no systemd): the agent is not on this host
     r = subprocess.run(["systemctl", "list-unit-files", "viam-agent.service"],
                        capture_output=True, text=True)
     return "viam-agent.service" in r.stdout
