@@ -4,6 +4,10 @@
 #
 #   pick_nics            -> sets ARM_NIC, LAN_NIC, DEFAULT_NIC, NIC_WHY
 #                           returns 0 on success, 1 if it cannot decide (NIC_WHY says why)
+#   _pick_nics_decide TABLE DEFAULT
+#                        -> the rule alone, no sysfs. TABLE is one "iface bus carrier"
+#                           line per port (bus as ethtool's bus-info, carrier 1 or 0).
+#                           scripts/test_pick_nics.py runs it against fake tables.
 #
 # Honours overrides set by the caller before the call:
 #   ARM_NIC_OVERRIDE, LAN_NIC_OVERRIDE   explicit interface names
@@ -15,6 +19,10 @@
 #   two onboard NICs, no adapter    arm = the onboard NIC that is NOT carrying the
 #                                   default route; lan = the one that is
 #
+# A box can also have both: two onboard ports and a USB adapter with no cable in it
+# (armfarm14, 2026-11-20). If no adapter has carrier and the default route is on an
+# onboard port, the adapter is ignored and the two-port rule applies.
+#
 # The second case is why this is not just "first PCIe NIC wins": on a two-port box the
 # first PCIe NIC by name is usually the one with the office LAN on it, and handing that
 # to the arm profile (static, never-default) takes the box off the network entirely.
@@ -25,70 +33,93 @@ _nic_bus() { ethtool -i "$1" 2>/dev/null | awk -F': ' '/^bus-info/{print $2}'; }
 _default_nic() { ip -4 route show default 2>/dev/null | awk '/^default/{print $5; exit}'; }
 
 pick_nics() {
-  ARM_NIC=""; LAN_NIC=""; NIC_WHY=""
-  DEFAULT_NIC="$(_default_nic)"
-
-  local pci=() usb=() i bus
+  local table="" d i bus car
   for d in /sys/class/net/*; do
     i=$(basename "$d")
     [[ "$i" == lo || "$i" == wl* ]] && continue
     bus="$(_nic_bus "$i")"
+    car=$(cat "$d/carrier" 2>/dev/null || echo 0)  # reading carrier fails while the link is down
+    table+="$i ${bus:--} ${car:-0}"$'\n'
+  done
+  _pick_nics_decide "$table" "$(_default_nic)"
+}
+
+_pick_nics_decide() {
+  local table="$1"
+  ARM_NIC=""; LAN_NIC=""; NIC_WHY=""
+  DEFAULT_NIC="$2"
+
+  # ${a[@]+"${a[@]}"} expands an empty array safely under `set -u` on bash 3.2 too.
+  local pci=() usb=() all=() usb_up=0 i bus car
+  while read -r i bus car; do
+    [[ -n "$i" ]] || continue
+    all+=("$i")
     case "$bus" in
       0000:*) pci+=("$i") ;;
-      usb-*)  usb+=("$i") ;;
+      usb-*)  usb+=("$i"); [[ "$car" == 1 ]] && usb_up=1 ;;
     esac
-  done
+  done <<< "$table"
+
+  local default_is_pci=0 n
+  for n in ${pci[@]+"${pci[@]}"}; do [[ "$n" == "$DEFAULT_NIC" ]] && default_is_pci=1; done
 
   # Explicit overrides win outright - the human at the machine can always be decisive.
   # Naming one port is enough; the other is inferred from what is left.
   if [[ -n "${ARM_NIC_OVERRIDE:-}" || -n "${LAN_NIC_OVERRIDE:-}" ]]; then
     ARM_NIC="${ARM_NIC_OVERRIDE:-}"; LAN_NIC="${LAN_NIC_OVERRIDE:-}"
-    local n
     if [[ -z "$LAN_NIC" ]]; then
       # Prefer the port that already has the office LAN on it.
       if [[ -n "$DEFAULT_NIC" && "$DEFAULT_NIC" != "$ARM_NIC" ]]; then
         LAN_NIC="$DEFAULT_NIC"
       else
-        for n in "${usb[@]}" "${pci[@]}"; do [[ "$n" != "$ARM_NIC" ]] && { LAN_NIC="$n"; break; }; done
+        for n in ${usb[@]+"${usb[@]}"} ${pci[@]+"${pci[@]}"}; do
+          [[ "$n" != "$ARM_NIC" ]] && { LAN_NIC="$n"; break; }
+        done
       fi
     fi
     if [[ -z "$ARM_NIC" ]]; then
-      for n in "${pci[@]}"; do [[ "$n" != "$LAN_NIC" ]] && { ARM_NIC="$n"; break; }; done
+      for n in ${pci[@]+"${pci[@]}"}; do [[ "$n" != "$LAN_NIC" ]] && { ARM_NIC="$n"; break; }; done
     fi
     NIC_WHY="explicit override -> lan=$LAN_NIC arm=$ARM_NIC"
-  elif [[ ${#usb[@]} -gt 0 ]]; then
+  elif [[ ${#usb[@]} -gt 0 && ( $usb_up -eq 1 || $default_is_pci -eq 0 || ${#pci[@]} -lt 2 ) ]]; then
     # Classic layout: the USB adapter is the office LAN, the onboard port is the arm.
     [[ ${#pci[@]} -gt 0 ]] || { NIC_WHY="no onboard PCIe NIC found"; return 1; }
     LAN_NIC="${usb[0]}"; ARM_NIC="${pci[0]}"
     NIC_WHY="USB adapter present -> lan=USB, arm=onboard"
   elif [[ ${#pci[@]} -ge 2 ]]; then
-    # Two-port box. The default route tells us which port the office LAN is on.
+    # Two-port box, or two ports plus a USB adapter with no cable in it (armfarm14).
+    # The default route tells us which port the office LAN is on.
+    local note=""
+    [[ ${#usb[@]} -gt 0 ]] && note=" (USB adapter ${usb[0]} has no carrier; ignored)"
     if [[ -z "$DEFAULT_NIC" ]]; then
       NIC_WHY="two onboard NICs but no default route, so the office LAN port cannot be
   identified. Plug the office LAN in and re-run, or name the ports explicitly:
     sudo bash scripts/setup-network.sh --lan-nic <iface> --arm-nic <iface>"
       return 1
     fi
-    local is_pci=0 n
-    for n in "${pci[@]}"; do [[ "$n" == "$DEFAULT_NIC" ]] && is_pci=1; done
-    if [[ $is_pci -eq 0 ]]; then
+    if [[ $default_is_pci -eq 0 ]]; then
       NIC_WHY="default route is on '$DEFAULT_NIC', which is not one of the onboard NICs.
   Name the ports explicitly: --lan-nic <iface> --arm-nic <iface>"
       return 1
     fi
     LAN_NIC="$DEFAULT_NIC"
     for n in "${pci[@]}"; do [[ "$n" != "$LAN_NIC" ]] && { ARM_NIC="$n"; break; }; done
-    NIC_WHY="two onboard NICs -> lan=$LAN_NIC (has the default route), arm=$ARM_NIC"
+    NIC_WHY="two onboard NICs -> lan=$LAN_NIC (has the default route), arm=$ARM_NIC$note"
   else
     NIC_WHY="only one network port and no USB adapter - plug in the LAN adapter,
   or use a box with a second ethernet port"
     return 1
   fi
 
+  local arm_found=0 lan_found=0
+  for n in ${all[@]+"${all[@]}"}; do
+    [[ "$n" == "$ARM_NIC" ]] && arm_found=1
+    [[ "$n" == "$LAN_NIC" ]] && lan_found=1
+  done
   [[ -n "$ARM_NIC" ]] || { NIC_WHY="could not determine the arm NIC"; return 1; }
   [[ -n "$LAN_NIC" ]] || { NIC_WHY="could not determine the LAN NIC"; return 1; }
-  [[ -e "/sys/class/net/$ARM_NIC" ]] || { NIC_WHY="no such interface: $ARM_NIC"; return 1; }
-  [[ -e "/sys/class/net/$LAN_NIC" ]] || { NIC_WHY="no such interface: $LAN_NIC"; return 1; }
+  [[ $arm_found -eq 1 ]] || { NIC_WHY="no such interface: $ARM_NIC"; return 1; }
+  [[ $lan_found -eq 1 ]] || { NIC_WHY="no such interface: $LAN_NIC"; return 1; }
   [[ "$ARM_NIC" != "$LAN_NIC" ]] || { NIC_WHY="arm and lan NIC are the same interface"; return 1; }
 
   # The guard that matters: the arm profile is static + never-default. Putting it on the
